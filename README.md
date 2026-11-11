@@ -1,5 +1,13 @@
 # rn-release-gate
 
+[![CI](https://img.shields.io/github/actions/workflow/status/wamziliary/rn-release-gate/ci.yml?branch=dev&label=CI&logo=githubactions&logoColor=white)](https://github.com/wamziliary/rn-release-gate/actions/workflows/ci.yml)
+[![Secret scan](https://img.shields.io/github/actions/workflow/status/wamziliary/rn-release-gate/security.yml?branch=dev&label=secret%20scan&logo=githubactions&logoColor=white)](https://github.com/wamziliary/rn-release-gate/actions/workflows/security.yml)
+[![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-template-2088FF?logo=githubactions&logoColor=white)](#how-it-works)
+[![Expo / React Native](https://img.shields.io/badge/Expo%20%2F%20React%20Native-ready-000020?logo=expo&logoColor=white)](#set-up-after-use-this-template)
+[![Node](https://img.shields.io/badge/node-22-339933?logo=nodedotjs&logoColor=white)](package.json)
+[![Release approval](https://img.shields.io/badge/release-two--person%20approval-8A2BE2)](SPEC.md)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
 A GitHub Actions template for React Native / Expo apps where publishing to an app store takes **two named people**: one requests the release, a different one approves it. A merge never publishes anything.
 
 > **Status:** the workflows pass `actionlint` and the trigger guard is tested locally. The request, approval and publish flow has **not yet been run end to end on GitHub**. Follow "First run" below before you rely on it.
@@ -40,7 +48,7 @@ The exact rules are in [`SPEC.md`](SPEC.md).
 
 ## Set up after "Use this template"
 
-1. **Point the approval workflow at your repository.** In `release-approve.yml`, change `CynthiaWahome/rn-release-gate` in the `uses:` line to your own owner and repository, and `@dev` to your default branch.
+1. **Point the approval workflow at your repository.** In `release-approve.yml`, change `wamziliary/rn-release-gate` in the `uses:` line to your own owner and repository, and `@dev` to your default branch.
 2. **Set the approvers.** In the same file, replace `ALLOWED_APPROVERS` with your logins. You need at least two people, because nobody can approve their own request.
 3. **Name your apps and tracks.** Edit `release.config.json`, and the matching `options` lists in `release-request.yml`.
 4. **Let Actions open pull requests.** Settings > Actions > General > Workflow permissions > tick "Allow GitHub Actions to create and approve pull requests".
