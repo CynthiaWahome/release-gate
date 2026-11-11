@@ -1,0 +1,113 @@
+name: "Release 3: Publish (called by the approval workflow only)"
+
+# This workflow has exactly ONE trigger: workflow_call.
+#
+# That is the lock on the door. A workflow_call-only workflow cannot be
+# started by a push, a pull request, the "Run workflow" button or the API.
+# It runs only when another workflow calls it, and the only caller is
+# release-approve.yml, after it has checked that a different, named person
+# approved the request.
+#
+# Do not add another trigger here, not even for a quick test. A second
+# trigger is a second door that skips the approval. The "Guard the publish
+# trigger" step in ci.yml fails the build if one appears.
+on:
+  workflow_call:
+    inputs:
+      app:
+        description: "Which app to publish (must be listed in release.config.json)"
+        required: true
+        type: string
+      track:
+        description: "Store track to publish to"
+        required: true
+        type: string
+      requested_by:
+        description: "GitHub login that requested the release"
+        required: true
+        type: string
+      approved_by:
+        description: "GitHub login that approved the release"
+        required: true
+        type: string
+      request_url:
+        description: "Link to the approved release-request pull request"
+        required: true
+        type: string
+
+# One publish per app at a time. A second approved request for the same app
+# waits instead of cancelling the first.
+concurrency:
+  group: publish-${{ inputs.app }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: "Publish ${{ inputs.app }} to ${{ inputs.track }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Inputs are handed to the shell as environment variables. They are
+      # never pasted into the script text, so a crafted value cannot become
+      # a command.
+      - name: Check the request against the release config
+        env:
+          APP: ${{ inputs.app }}
+          TRACK: ${{ inputs.track }}
+        run: |
+          jq -e --arg app "$APP" '.apps | index($app)' release.config.json > /dev/null \
+            || { echo "::error::Unknown app: $APP"; exit 1; }
+          jq -e --arg track "$TRACK" '.tracks | index($track)' release.config.json > /dev/null \
+            || { echo "::error::Unknown track: $TRACK"; exit 1; }
+
+      - name: Build
+        env:
+          APP: ${{ inputs.app }}
+        run: npm run build -- "$APP"
+
+      # DRY RUN. Replace this step with your real store upload. This is the
+      # only place in the repository where store or signing credentials
+      # should ever be referenced.
+      - name: Publish (dry run)
+        env:
+          APP: ${{ inputs.app }}
+          TRACK: ${{ inputs.track }}
+          REQUESTED_BY: ${{ inputs.requested_by }}
+          APPROVED_BY: ${{ inputs.approved_by }}
+          REQUEST_URL: ${{ inputs.request_url }}
+        run: |
+          {
+            echo "## Dry-run publish"
+            echo ""
+            echo "- App: \`$APP\`"
+            echo "- Track: \`$TRACK\`"
+            echo "- Requested by: @$REQUESTED_BY"
+            echo "- Approved by: @$APPROVED_BY"
+            echo "- Request: $REQUEST_URL"
+            echo "- Artifact: \`dist/$APP.artifact.txt\`"
+            echo ""
+            echo "Nothing was uploaded. Replace this step with your store upload."
+          } >> "$GITHUB_STEP_SUMMARY"
+          cat "dist/$APP.artifact.txt"
+
+      - name: Keep the built artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: "${{ inputs.app }}-${{ inputs.track }}-${{ github.sha }}"
+          path: dist/
+          retention-days: 14
