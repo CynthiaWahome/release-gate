@@ -40,3 +40,9 @@ jobs:
 
       - name: Type-check
         run: npm run typecheck
+
+      # The publish workflow may only be started by the approval workflow.
+      # This step fails the build if it ever gains another trigger. It must
+      # stay a hard failure: never mark it continue-on-error.
+      - name: Guard the publish trigger
+        run: scripts/check-publish-trigger.sh
