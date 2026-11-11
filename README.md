@@ -1,12 +1,15 @@
 # rn-release-gate
 
-[![CI](https://img.shields.io/github/actions/workflow/status/wamziliary/rn-release-gate/ci.yml?branch=dev&label=CI&logo=githubactions&logoColor=white)](https://github.com/wamziliary/rn-release-gate/actions/workflows/ci.yml)
-[![Secret scan](https://img.shields.io/github/actions/workflow/status/wamziliary/rn-release-gate/security.yml?branch=dev&label=secret%20scan&logo=githubactions&logoColor=white)](https://github.com/wamziliary/rn-release-gate/actions/workflows/security.yml)
-[![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-template-2088FF?logo=githubactions&logoColor=white)](#how-it-works)
-[![Expo / React Native](https://img.shields.io/badge/Expo%20%2F%20React%20Native-ready-000020?logo=expo&logoColor=white)](#set-up-after-use-this-template)
-[![Node](https://img.shields.io/badge/node-22-339933?logo=nodedotjs&logoColor=white)](package.json)
-[![Release approval](https://img.shields.io/badge/release-two--person%20approval-8A2BE2)](SPEC.md)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+![Status](https://img.shields.io/badge/status-in%20development-F5A623?style=for-the-badge)
+![Visibility](https://img.shields.io/badge/visibility-private-EB5757?style=for-the-badge)
+
+[![CI](https://img.shields.io/github/actions/workflow/status/wamziliary/rn-release-gate/ci.yml?branch=dev&label=CI&logo=githubactions&logoColor=white&style=for-the-badge)](https://github.com/wamziliary/rn-release-gate/actions/workflows/ci.yml)
+[![Secret scan](https://img.shields.io/github/actions/workflow/status/wamziliary/rn-release-gate/security.yml?branch=dev&label=secret%20scan&logo=githubactions&logoColor=white&style=for-the-badge)](https://github.com/wamziliary/rn-release-gate/actions/workflows/security.yml)
+
+[![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-template-2088FF?style=for-the-badge&logo=githubactions&logoColor=white)](#how-it-works)
+[![Expo / React Native](https://img.shields.io/badge/Expo%20%2F%20React%20Native-ready-000020?style=for-the-badge&logo=expo&logoColor=white)](#set-up-after-use-this-template)
+[![Release approval](https://img.shields.io/badge/release-two--person%20approval-8A2BE2?style=for-the-badge)](SPEC.md)
+[![License: MIT](https://img.shields.io/badge/license-MIT-00A86B?style=for-the-badge)](LICENSE)
 
 A GitHub Actions template for React Native / Expo apps where publishing to an app store takes **two named people**: one requests the release, a different one approves it. A merge never publishes anything.
 
