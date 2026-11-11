@@ -14,7 +14,7 @@ env:
   # Who may approve a release. Kept here, in the workflow, and not read from
   # CODEOWNERS at run time: changing who can release must always be a visible
   # change to this file. Replace with your own logins (space separated).
-  ALLOWED_APPROVERS: "CynthiaWahome wamzilliary"
+  ALLOWED_APPROVERS: "CynthiaWahome wamzii"
 
 jobs:
   verify:
