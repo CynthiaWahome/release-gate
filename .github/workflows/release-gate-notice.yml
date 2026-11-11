@@ -1,0 +1,32 @@
+name: "Release gate: merge notice"
+
+# Merging a release request publishes nothing. The publish path starts from
+# an approving review, so a merge runs no release workflow at all, and a
+# workflow that does not run cannot explain itself. This one only leaves a
+# comment. It approves nothing and publishes nothing.
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - release-gate
+
+permissions:
+  pull-requests: write
+
+jobs:
+  notice:
+    name: Explain that merging does not publish
+    if: >-
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.user.login == 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Comment on the merged request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          MERGED_BY: ${{ github.event.pull_request.merged_by.login }}
+        run: |
+          gh pr comment "$PR_NUMBER" --repo "$REPO" --body "@$MERGED_BY this request was merged, and merging does not publish anything. A release starts only when an authorised approver, who is not the requester, submits an **Approve** review on an open request. Please run the **Release 1: Request** workflow again and have it approved instead of merged."
