@@ -1,0 +1,129 @@
+name: "Release 1: Request"
+
+# Opens a release request for someone else to approve.
+#
+# This workflow builds nothing and publishes nothing. All it does is write a
+# small request file on a new branch and have the automation open a pull
+# request into the gate branch. The publish itself lives in _publish.yml and
+# can only be reached after release-approve.yml accepts an approval from a
+# different, named person.
+#
+# One-time repository setting: Settings > Actions > General > Workflow
+# permissions > "Allow GitHub Actions to create and approve pull requests".
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: "Which app to release"
+        required: true
+        type: choice
+        options:
+          - app-one
+          - app-two
+      track:
+        description: "Store track"
+        required: true
+        default: internal
+        type: choice
+        options:
+          - internal
+          - alpha
+          - beta
+          - production
+
+concurrency:
+  group: release-request-${{ inputs.app }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write # push the request branch
+  pull-requests: write # open the request pull request
+
+env:
+  GATE_BRANCH: release-gate
+
+jobs:
+  request:
+    name: "Request release of ${{ inputs.app }} (${{ inputs.track }})"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      # Values chosen by a person are passed as environment variables and
+      # checked against the release config before anything is written.
+      - name: Check the request against the release config
+        env:
+          APP: ${{ inputs.app }}
+          TRACK: ${{ inputs.track }}
+        run: |
+          jq -e --arg app "$APP" '.apps | index($app)' release.config.json > /dev/null \
+            || { echo "::error::Unknown app: $APP"; exit 1; }
+          jq -e --arg track "$TRACK" '.tracks | index($track)' release.config.json > /dev/null \
+            || { echo "::error::Unknown track: $TRACK"; exit 1; }
+
+      # The gate branch is only a target for request pull requests. Keep it
+      # level with the branch this run started from, so a request pull
+      # request shows one changed file: the request itself. If the gate
+      # branch cannot be fast-forwarded (someone merged into it), carry on;
+      # the approval workflow finds the request file by its path.
+      - name: Make sure the gate branch exists and is current
+        run: |
+          git push origin "HEAD:refs/heads/$GATE_BRANCH" \
+            || echo "::warning::Could not fast-forward $GATE_BRANCH. Continuing."
+
+      - name: Write the request and open the pull request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APP: ${{ inputs.app }}
+          TRACK: ${{ inputs.track }}
+          REQUESTED_BY: ${{ github.actor }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          request_id="$(date -u +%Y%m%d-%H%M%S)-$APP-${{ github.run_id }}"
+          branch="release-request/$request_id"
+          file="release-requests/$request_id.json"
+
+          mkdir -p release-requests
+          jq -n \
+            --arg app "$APP" \
+            --arg track "$TRACK" \
+            --arg requested_by "$REQUESTED_BY" \
+            --arg requested_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg commit "$GITHUB_SHA" \
+            '{app: $app, track: $track, requested_by: $requested_by, requested_at: $requested_at, commit: $commit}' \
+            > "$file"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add "$file"
+          git commit -m "chore(release): request $APP release to $TRACK"
+          git push origin "$branch"
+
+          body="$(cat <<BODY
+          ## Release request
+
+          | | |
+          |---|---|
+          | App | \`$APP\` |
+          | Track | \`$TRACK\` |
+          | Requested by | @$REQUESTED_BY |
+          | Commit | \`$GITHUB_SHA\` |
+          | Request run | $RUN_URL |
+
+          **To release:** an authorised approver who is **not** @$REQUESTED_BY submits an **Approve** review on this pull request.
+
+          **Do not merge this pull request.** Merging publishes nothing.
+          To cancel the request, close it.
+          BODY
+          )"
+
+          gh pr create \
+            --base "$GATE_BRANCH" \
+            --head "$branch" \
+            --title "Release request: $APP to $TRACK" \
+            --body "$body"
