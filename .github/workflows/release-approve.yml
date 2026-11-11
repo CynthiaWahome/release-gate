@@ -14,7 +14,7 @@ env:
   # Who may approve a release. Kept here, in the workflow, and not read from
   # CODEOWNERS at run time: changing who can release must always be a visible
   # change to this file. Replace with your own logins (space separated).
-  ALLOWED_APPROVERS: "CynthiaWahome wamziliary"
+  ALLOWED_APPROVERS: "CynthiaWahome wamzilliary"
 
 jobs:
   verify:
@@ -120,7 +120,7 @@ jobs:
     name: Publish the approved release
     needs: verify
     if: needs.verify.outputs.approved == 'true'
-    uses: CynthiaWahome/rn-release-gate/.github/workflows/_publish.yml@dev
+    uses: wamziliary/rn-release-gate/.github/workflows/_publish.yml@dev
     # A called workflow can never have more permission than this job grants.
     permissions:
       contents: read
