@@ -1,4 +1,14 @@
-# Changes to the release workflows need a review from a code owner.
-# Replace the login below with the people who own releases in your project.
-.github/workflows/ @CynthiaWahome
-.github/CODEOWNERS @CynthiaWahome
+# Owners must have write access to this repository. Replace these logins when
+# adopting the template, and verify access again after transferring the repo.
+#
+# Add another eligible owner BEFORE requiring code-owner approval: PR authors
+# cannot approve their own PRs. A sole owner can block their own workflow PRs.
+# GitHub uses CODEOWNERS from the PR's base branch, so land this setup first.
+# Know your recovery/bypass options before enforcing rules on administrators.
+#
+# Keep both owners on each line. Either eligible owner's approval can satisfy
+# the code-owner requirement; this does not require both owners to approve.
+# These entries govern changes to the gate, not release approvals. Configure
+# release approvers separately in release-approve.yml (ALLOWED_APPROVERS).
+/.github/workflows/ @CynthiaWahome @wamzii
+/.github/CODEOWNERS @CynthiaWahome @wamzii

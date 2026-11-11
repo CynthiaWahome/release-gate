@@ -1,5 +1,5 @@
 {
-  "name": "rn-release-gate-sample",
+  "name": "release-gate",
   "version": "0.1.0",
   "private": true,
   "description": "Placeholder app for the release-gate template. Replace with your Expo / React Native app.",
