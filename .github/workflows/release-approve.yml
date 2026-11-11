@@ -1,0 +1,165 @@
+name: "Release 2: Approve and publish"
+
+# The only workflow allowed to call _publish.yml.
+#
+# It runs when a review is submitted on any pull request, then narrows that
+# down to one case: an authorised person, who is not the requester, approving
+# a release request that the automation opened. Every rule is listed in
+# SPEC.md. Anything that cannot be read or checked counts as "no".
+on:
+  pull_request_review:
+    types: [submitted]
+
+env:
+  # Who may approve a release. Kept here, in the workflow, and not read from
+  # CODEOWNERS at run time: changing who can release must always be a visible
+  # change to this file. Replace with your own logins (space separated).
+  ALLOWED_APPROVERS: "CynthiaWahome wamziliary"
+
+jobs:
+  verify:
+    name: Verify the approval
+    # Checked before the job starts, so an ordinary review elsewhere in the
+    # repository never runs this at all:
+    #   - the pull request targets the gate branch;
+    #   - the review is an approval;
+    #   - the automation opened the pull request. Without this, a person
+    #     could open their own pull request with a request file naming
+    #     someone else as requester, then approve it themselves;
+    #   - the branch is a request branch in this repository, not a fork.
+    if: >-
+      github.event.pull_request.base.ref == 'release-gate' &&
+      github.event.review.state == 'approved' &&
+      github.event.pull_request.user.login == 'github-actions[bot]' &&
+      startsWith(github.event.pull_request.head.ref, 'release-request/') &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+    outputs:
+      approved: ${{ steps.check.outputs.approved }}
+      app: ${{ steps.check.outputs.app }}
+      track: ${{ steps.check.outputs.track }}
+      requested_by: ${{ steps.check.outputs.requested_by }}
+    steps:
+      - name: Check approver, request file and self-approval
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          APPROVER: ${{ github.event.review.user.login }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+
+          # Record a refusal: explain on the pull request, publish nothing.
+          deny() {
+            echo "::error::$1"
+            gh pr comment "$PR_NUMBER" --repo "$REPO" --body "Release not started: $1" || true
+            echo "approved=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          }
+          # If anything below fails unexpectedly, the step fails and the
+          # output is never set to true, so the publish job is skipped.
+
+          lower() { tr '[:upper:]' '[:lower:]' <<< "$1"; }
+          approver="$(lower "$APPROVER")"
+
+          # 1. The approver must be on the list. Logins are compared without
+          #    regard to case, because GitHub treats them that way.
+          allowed=false
+          for name in $ALLOWED_APPROVERS; do
+            if [[ "$(lower "$name")" == "$approver" ]]; then allowed=true; fi
+          done
+          [[ "$allowed" == "true" ]] || deny "@$APPROVER is not an authorised release approver. This request still needs an authorised approval."
+
+          # 2. Exactly one request file. Found by its path, across every page
+          #    of the changed-files list, never by "the first changed file".
+          mapfile -t files < <(gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/files" \
+            --jq '.[] | select(.filename | startswith("release-requests/")) | select(.filename | endswith(".json")) | .filename')
+          [[ "${#files[@]}" -eq 1 ]] || deny "expected exactly one request file under release-requests/, found ${#files[@]}."
+          request_file="${files[0]}"
+
+          # 3. Read the request exactly as it is at the approved commit.
+          request_json="$(gh api "repos/$REPO/contents/$request_file?ref=$HEAD_SHA" --jq '.content' | base64 --decode)" \
+            || deny "the request file could not be read."
+          app="$(jq -er '.app // empty' <<< "$request_json")" || deny "the request file has no app."
+          track="$(jq -er '.track // empty' <<< "$request_json")" || deny "the request file has no track."
+          requested_by="$(jq -er '.requested_by // empty' <<< "$request_json")" || deny "the request file has no requested_by."
+
+          # 4. App and track must be on the fixed lists, read from the
+          #    default branch and not from the request branch.
+          config_json="$(gh api "repos/$REPO/contents/release.config.json?ref=$DEFAULT_BRANCH" --jq '.content' | base64 --decode)" \
+            || deny "release.config.json could not be read from $DEFAULT_BRANCH."
+          jq -e --arg v "$app" '.apps | index($v)' <<< "$config_json" > /dev/null || deny "the requested app is not in release.config.json."
+          jq -e --arg v "$track" '.tracks | index($v)' <<< "$config_json" > /dev/null || deny "the requested track is not in release.config.json."
+
+          # 5. Nobody approves their own request.
+          [[ "$(lower "$requested_by")" != "$approver" ]] || deny "@$APPROVER requested this release, so their own approval does not count. A different authorised approver is needed."
+
+          {
+            echo "approved=true"
+            echo "app=$app"
+            echo "track=$track"
+            echo "requested_by=$requested_by"
+          } >> "$GITHUB_OUTPUT"
+          echo "Approval by @$APPROVER accepted for $app -> $track (requested by @$requested_by)."
+
+  # The one call site of the publish workflow.
+  #
+  # It is named by repository and branch, not by a relative path. A
+  # review-triggered run resolves a relative path against the pull request,
+  # so naming the default branch makes sure the publish steps that run are
+  # the reviewed ones on that branch. AFTER USING THIS TEMPLATE, change the
+  # owner and repository below to your own.
+  publish:
+    name: Publish the approved release
+    needs: verify
+    if: needs.verify.outputs.approved == 'true'
+    uses: CynthiaWahome/rn-release-gate/.github/workflows/_publish.yml@dev
+    # A called workflow can never have more permission than this job grants.
+    permissions:
+      contents: read
+    with:
+      app: ${{ needs.verify.outputs.app }}
+      track: ${{ needs.verify.outputs.track }}
+      requested_by: ${{ needs.verify.outputs.requested_by }}
+      approved_by: ${{ github.event.review.user.login }}
+      request_url: ${{ github.event.pull_request.html_url }}
+    secrets: inherit
+
+  finish:
+    name: Close or keep the request
+    needs: [verify, publish]
+    # always(): this must report even when the publish failed.
+    if: always() && needs.verify.outputs.approved == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write
+      contents: write # delete the request branch after a successful publish
+    steps:
+      - name: Comment and close on success, keep open on failure
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          RESULT: ${{ needs.publish.result }}
+          APPROVER: ${{ github.event.review.user.login }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [[ "$RESULT" == "success" ]]; then
+            gh pr comment "$PR_NUMBER" --repo "$REPO" --body "Approved by @$APPROVER. Publish completed."
+            gh pr close "$PR_NUMBER" --repo "$REPO" --delete-branch
+          else
+            # The approval was valid; the failure is usually infrastructure.
+            # Keep the request so it can be retried without a new approval.
+            # A re-run replays the same approval on the same commit, so it
+            # can only publish what was already approved.
+            gh pr comment "$PR_NUMBER" --repo "$REPO" --body "Approved by @$APPROVER, but the publish did not succeed (result: \`$RESULT\`). Nothing was published. This request is left open on purpose. Fix the cause, then re-run the failed jobs here: $RUN_URL"
+            echo "::notice::Publish result was $RESULT. Request #$PR_NUMBER left open for retry."
+          fi
