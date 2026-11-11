@@ -1,33 +1,46 @@
-## Summary
+# Pull Request Template
 
-<!-- What changed, and why? Link related issues below when applicable. -->
+<!--- Provide a general summary of your changes in the Title above -->
 
-## Related issues
+## Description
 
-<!-- Use "Refs #123" for context, or "Closes #123" only when merging should close it. -->
+<!--- Describe your changes in detail -->
 
-## Type of change
+## Related Issue (Link to issue ticket)
 
-- [ ] Documentation
-- [ ] Bug fix
-- [ ] Feature
-- [ ] Workflow or configuration
-- [ ] Breaking change
+<!--- This project only accepts pull requests related to open issues -->
+<!--- If suggesting a new feature or change, please discuss it in an issue first -->
+<!--- If fixing a bug, there should be an issue describing it with steps to reproduce -->
+<!--- Please link to the issue here: -->
 
-## Validation
+## Motivation and Context
 
-<!-- List commands actually run and their results. Note placeholders, skipped checks,
-     and anything requiring GitHub or store-side verification. Screenshots only if useful. -->
+<!--- Why is this change required? What problem does it solve? -->
 
-## Release-gate impact
+## How Has This Been Tested?
 
-<!-- If relevant, explain changes to approval checks, owners, token permissions,
-     credentials, triggers, source revisions, or retry behaviour. Otherwise write "None". -->
+<!--- Please describe in detail how you tested your changes. -->
+<!--- Include details of your testing environment, and the tests you ran to -->
+<!--- see how your change affects other areas of the code, etc. -->
+
+## Screenshots (if appropriate - Postman, etc)
+
+## Types of changes
+
+<!--- What types of changes does your code introduce? Put an `x` in all the boxes that apply: -->
+
+- [ ] Bug fix (non-breaking change which fixes an issue)
+- [ ] New feature (non-breaking change which adds functionality)
+- [ ] Breaking change (fix or feature that would cause existing functionality to change)
 
 ## Checklist
 
-- [ ] Documentation matches the change.
-- [ ] Validation results and limitations are recorded above.
-- [ ] No secrets or local-only notes are included.
-- [ ] If changing owners or approvers, the intended accounts and required access have been checked (or verification is explicitly pending).
-- [ ] If changing publishing behaviour, the two-person gate and workflow-call-only publish trigger are preserved.
+<!--- Go over all the following points, and put an `x` in all the boxes that apply. -->
+<!--- If you're unsure about any of these, don't hesitate to ask. We're here to help! -->
+
+- [ ] My code follows the code style of this project.
+- [ ] My change requires a change to the documentation.
+- [ ] I have updated the documentation accordingly.
+- [ ] I have read the **CONTRIBUTING** document.
+- [ ] I have added tests to cover my changes.
+- [ ] All new and existing tests passed.
