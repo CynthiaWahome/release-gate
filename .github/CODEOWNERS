@@ -1,0 +1,4 @@
+# Changes to the release workflows need a review from a code owner.
+# Replace the login below with the people who own releases in your project.
+.github/workflows/ @CynthiaWahome
+.github/CODEOWNERS @CynthiaWahome
