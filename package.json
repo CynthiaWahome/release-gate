@@ -1,0 +1,12 @@
+{
+  "name": "rn-release-gate-sample",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Placeholder app for the release-gate template. Replace with your Expo / React Native app.",
+  "license": "MIT",
+  "scripts": {
+    "lint": "node --check scripts/build.mjs",
+    "typecheck": "node -e \"console.log('typecheck placeholder: replace with tsc --noEmit')\"",
+    "build": "node scripts/build.mjs"
+  }
+}

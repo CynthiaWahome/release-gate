@@ -1,0 +1,4 @@
+{
+  "apps": ["app-one", "app-two"],
+  "tracks": ["internal", "alpha", "beta", "production"]
+}
