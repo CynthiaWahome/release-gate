@@ -9,3 +9,6 @@ dist/
 *.pem
 google-services*.json
 .DS_Store
+
+# Local testing notes; not part of the published template.
+/docs/

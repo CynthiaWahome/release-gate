@@ -1,4 +1,6 @@
-# rn-release-gate
+# Release Gate
+
+**One person requests. Another approves. Merging is not a release strategy.**
 
 ![Status](https://img.shields.io/badge/status-in%20development-F5A623?style=for-the-badge)
 ![Visibility](https://img.shields.io/badge/visibility-private-EB5757?style=for-the-badge)
@@ -6,96 +8,89 @@
 [![CI](https://img.shields.io/github/actions/workflow/status/wamziliary/rn-release-gate/ci.yml?branch=dev&label=CI&logo=githubactions&logoColor=white&style=for-the-badge)](https://github.com/wamziliary/rn-release-gate/actions/workflows/ci.yml)
 [![Secret scan](https://img.shields.io/github/actions/workflow/status/wamziliary/rn-release-gate/security.yml?branch=dev&label=secret%20scan&logo=githubactions&logoColor=white&style=for-the-badge)](https://github.com/wamziliary/rn-release-gate/actions/workflows/security.yml)
 
-[![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-template-2088FF?style=for-the-badge&logo=githubactions&logoColor=white)](#how-it-works)
-[![Expo / React Native](https://img.shields.io/badge/Expo%20%2F%20React%20Native-ready-000020?style=for-the-badge&logo=expo&logoColor=white)](#set-up-after-use-this-template)
+[![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-template-2088FF?style=for-the-badge&logo=githubactions&logoColor=white)](#make-it-yours)
+[![Expo / React Native](https://img.shields.io/badge/Expo%20%2F%20React%20Native-release%20gate-000020?style=for-the-badge&logo=expo&logoColor=white)](#what-you-get)
 [![Release approval](https://img.shields.io/badge/release-two--person%20approval-8A2BE2?style=for-the-badge)](SPEC.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-00A86B?style=for-the-badge)](LICENSE)
 
-A GitHub Actions template for React Native / Expo apps where publishing to an app store takes **two named people**: one requests the release, a different one approves it. A merge never publishes anything.
+A GitHub Actions release-approval template extracted from a working React Native / Expo setup. Someone requests a release, a different authorised person approves it, and only then can the publishing workflow run.
 
-> **Status:** the workflows pass `actionlint` and the trigger guard is tested locally. The request, approval and publish flow has **not yet been run end to end on GitHub**. Follow "First run" below before you rely on it.
+> **Bring your own app; keep the gate.** This template includes a sample build and a dry-run publishing step. It produces a text artifact—not an APK, AAB, or IPA—and uploads nothing to an app store. No surprise production releases included.
+
+## What you get
+
+- A manual release request with app and store-track choices.
+- An automation-created pull request that records the request.
+- Named release approvers and a self-approval check.
+- A reusable publishing workflow reached through the approval workflow.
+- A CI guard against adding another publishing trigger.
+- Request cleanup after success, with the request left open after failure.
+
+The approval mechanism is reusable beyond React Native, too.
 
 ## How it works
 
-```
- Person A                      Automation                    Person B
-    |                              |                             |
-    |  runs "Release 1: Request"   |                             |
-    |----------------------------->|                             |
-    |                              |  writes release-requests/   |
-    |                              |  <id>.json and opens a pull |
-    |                              |  request into release-gate  |
-    |                              |---------------------------->|
-    |                              |                             |  reviews: Approve
-    |                              |<----------------------------|
-    |                              |
-    |              "Release 2: Approve and publish"
-    |              checks: gate branch, real approval, opened by
-    |              the automation, approver on the list, one valid
-    |              request file, approver is not the requester
-    |                              |
-    |              "Release 3: Publish" (workflow_call only)
-    |              builds and publishes (dry run in this template)
+```mermaid
+flowchart TD
+    A[Person A runs Release 1: Request] --> B[Automation opens a PR into release-gate]
+    B --> C[Person B submits an approving review]
+    C --> D{Approval checks pass?}
+    D -->|No| E[Publishing stays locked]
+    D -->|Yes| F[Call Release 3: Publish]
+    F --> G{Publish succeeds?}
+    G -->|Yes| H[Close the PR and delete its branch]
+    G -->|No| I[Keep the request open for investigation]
 ```
 
-| Workflow | File | Started by |
-|---|---|---|
-| Release 1: Request | `.github/workflows/release-request.yml` | a person, by hand |
-| Release 2: Approve and publish | `.github/workflows/release-approve.yml` | an approving review |
-| Release 3: Publish | `.github/workflows/_publish.yml` | only by Release 2 |
-| Merge notice | `.github/workflows/release-gate-notice.yml` | a merged request |
-| CI | `.github/workflows/ci.yml` | pull requests and pushes |
-| Secret scan | `.github/workflows/security.yml` | pull requests, pushes, weekly |
+`release-gate` is a holding branch for release requests—not somewhere you merge application changes.
 
-The exact rules are in [`SPEC.md`](SPEC.md).
+## Make it yours
 
-## Set up after "Use this template"
+1. **Start a repository** with **Use this template**, or bring the gate into your existing app.
+2. **Configure your repository reference, approvers, apps, and tracks.**
+3. **Give Actions the required access** and configure code owners before enforcing reviews.
+4. **Try the included dry run**, then connect your real build and store upload.
 
-1. **Point the approval workflow at your repository.** In `release-approve.yml`, change `wamziliary/rn-release-gate` in the `uses:` line to your own owner and repository, and `@dev` to your default branch.
-2. **Set the approvers.** In the same file, replace `ALLOWED_APPROVERS` with your logins. You need at least two people, because nobody can approve their own request.
-3. **Name your apps and tracks.** Edit `release.config.json`, and the matching `options` lists in `release-request.yml`.
-4. **Let Actions open pull requests.** Settings > Actions > General > Workflow permissions > tick "Allow GitHub Actions to create and approve pull requests".
-5. **Replace the placeholder app.** `scripts/build.mjs` and `package.json` stand in for a real app. Put your build command in the "Build" step of `_publish.yml`.
-6. **Replace the dry run.** The "Publish (dry run)" step in `_publish.yml` is where your store upload goes. It is the only place store or signing credentials should appear.
-7. **Update `CODEOWNERS`** with the people who own releases.
+Follow [SETUP.md](SETUP.md) for both adoption routes, exact file changes, permissions, and the first-run checklist.
 
-## First run (do this once, with two accounts)
+> **Avoid locking yourself out:** add another eligible code owner with write access **before requiring code-owner approval**. PR authors cannot approve their own PRs. [Ownership setup and recovery considerations →](SETUP.md#5-configure-code-owners-before-enforcing-reviews)
 
-1. Account A: Actions > **Release 1: Request** > Run workflow. A pull request into `release-gate` appears, opened by `github-actions[bot]`.
-2. Account A approves it. Expected: a comment saying their own approval does not count. Nothing is published.
-3. Account B (on the approver list) approves it. Expected: **Release 3: Publish** runs, the job summary shows the dry run, and the request is closed.
-4. Open a new request and merge it. Expected: a comment explaining that merging does not publish.
-5. On a branch, add `workflow_dispatch:` to `_publish.yml` and open a pull request. Expected: CI fails at "Guard the publish trigger".
+## Using the gate
 
-## What it stops
+### Request a release
 
-- A release caused by a merge.
-- One person requesting and approving their own release.
-- A hand-made pull request into the gate branch with a forged request file.
-- An approval from someone who is not on the list.
-- A second, quiet way to start the publish workflow (CI fails if one is added).
+Open **Actions → Release 1: Request → Run workflow**, select the intended branch, app, and track, then run it. The bot opens a PR into `release-gate`; ask an authorised reviewer to review it.
 
-## What it does not stop on its own
+### Approve a release
 
-The workflows are one layer. These settings are the rest.
+A different authorised person opens the request PR and submits **Review changes → Approve**. The gate checks the request before calling the publish workflow.
 
-| Gap | Setting that closes it |
-|---|---|
-| Anyone who can push a branch can push their own workflow, and plain repository secrets are readable by any workflow | Keep store and signing credentials in a GitHub **Environment** with its own access rules, and reference that environment only from `_publish.yml`. Check GitHub's documentation for what your plan allows, and test how the environment's branch rules behave with review-triggered runs before relying on them |
-| A person with write access could push an extra commit to a request branch | Add a branch **ruleset** that restricts pushes to `release-request/**` and `release-gate` |
-| The approver list and the gate live in workflow files | Protect the default branch and require a **code-owner review** for `.github/workflows/` |
-| Actions are referenced by version tag | Pin each action to a full commit SHA and let Dependabot update them |
+**Do not merge the request PR.** This is an approval queue, not a merge queue wearing a different hat.
 
-## Local checks
+- **Success:** the workflow closes the request and deletes its branch.
+- **Failure:** the request stays open. Inspect the logs and, for real uploads, the store state before rerunning—a failed job does not guarantee nothing was uploaded.
+- **Changed your mind?** Close an unapproved request without merging it.
 
-```bash
-npm ci
-npm run lint
-npm run typecheck
-scripts/check-publish-trigger.sh   # must print "The publish gate is intact."
-actionlint                         # if installed
-```
+## Before production
 
-## Licence
+Protect the workflow files, request branches, and store credentials. Also define the exact source revision to build: the request records a commit, but the sample publish workflow does not explicitly check out that recorded commit.
 
-MIT. See [`LICENSE`](LICENSE).
+The gate compares GitHub accounts; independent approval still requires a different human. Repository write access remains powerful, so the workflow is not a substitute for repository and environment protections.
+
+See the [production checklist](SETUP.md#before-you-give-it-the-store-keys) before enabling real uploads.
+
+## Documentation
+
+- [Setup guide](SETUP.md): adoption, permissions, workflow reference, testing, and local checks.
+- [Specification](SPEC.md): the exact gate rules and known limits.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
+
+---
+
+<p align="center">
+  <b>Call us old-fashioned</b> <img src="https://res.cloudinary.com/cycy/image/upload/v1794422080/tlbwyleiin7zpohuotf9.png" width="22" height="22" alt="adjusts glasses" style="vertical-align: middle;" /><br>
+  We just think shipping a broken binary to thousands of devices should take two people agreeing it's a good idea <a href="https://github.com/CynthiaWahome"><img src="https://res.cloudinary.com/cycy/image/upload/v1794422081/lamllkkir4ch4kgdvxne.gif" width="22" height="22" alt="wamzy" style="vertical-align: middle;" /></a>
+</p>
