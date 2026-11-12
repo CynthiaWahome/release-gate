@@ -46,3 +46,8 @@ jobs:
       # stay a hard failure: never mark it continue-on-error.
       - name: Guard the publish trigger
         run: scripts/check-publish-trigger.sh
+
+      # Tests for the optional add-ons. They run the real scripts against
+      # fakes in temporary folders and need no credentials.
+      - name: Test the add-ons
+        run: scripts/test-addons.sh
