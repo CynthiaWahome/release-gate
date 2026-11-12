@@ -1,0 +1,34 @@
+{
+  "name": "play-version-code",
+  "summary": "Ask Google Play for the highest existing versionCode so the next build can use one more.",
+  "status": "experimental",
+  "tested": "fake",
+  "requires": {
+    "variables": {
+      "ANDROID_PACKAGE_NAME": "The Android package name to look up, for example com.example.app. If you release several apps, map each app to its own package name."
+    },
+    "secrets": [
+      "PLAY_PUBLISHER_SERVICE_ACCOUNT_JSON"
+    ],
+    "packages": {
+      "googleapis": ">=174.0.1"
+    },
+    "addons": []
+  },
+  "copies": [
+    {
+      "from": "files/scripts/get-play-version-code.mjs",
+      "to": "scripts/get-play-version-code.mjs"
+    }
+  ],
+  "patches": [
+    {
+      "file": ".github/workflows/_publish.yml",
+      "change": "Add a step before the Build step that runs scripts/get-play-version-code.mjs and saves the result as PLAY_MAX_VERSION_CODE. Your build uses that number plus one. See the README for the exact YAML."
+    },
+    {
+      "file": "package.json",
+      "change": "Add googleapis as a devDependency (npm install --save-dev googleapis) so npm ci installs it from the lockfile."
+    }
+  ]
+}
