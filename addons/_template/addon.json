@@ -6,6 +6,7 @@
   "requires": {
     "variables": {},
     "secrets": [],
+    "packages": {},
     "addons": []
   },
   "copies": [],

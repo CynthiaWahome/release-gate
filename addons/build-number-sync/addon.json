@@ -1,0 +1,26 @@
+{
+  "name": "build-number-sync",
+  "summary": "Report a released build/version payload to one or more configured backend endpoints after publish.",
+  "status": "experimental",
+  "tested": "fake",
+  "requires": {
+    "variables": {},
+    "secrets": [
+      "BUILD_NUMBER_SYNC_KEY"
+    ],
+    "packages": {},
+    "addons": []
+  },
+  "copies": [
+    {
+      "from": "files/scripts/publish-build-number.mjs",
+      "to": "scripts/publish-build-number.mjs"
+    }
+  ],
+  "patches": [
+    {
+      "file": ".github/workflows/_publish.yml",
+      "change": "After a successful publish/upload, add an opt-in step that runs scripts/publish-build-number.mjs when BUILD_NUMBER_SYNC_URLS is configured. Pass BUILD_NUMBER_SYNC_URLS, BUILD_NUMBER_SYNC_PAYLOAD (JSON), BUILD_NUMBER_SYNC_KEY and optional BUILD_NUMBER_SYNC_KEY_HEADER via env. Keep credentials in _publish.yml and do not add triggers. See the README for the exact YAML."
+    }
+  ]
+}

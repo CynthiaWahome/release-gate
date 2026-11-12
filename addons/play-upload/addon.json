@@ -1,0 +1,30 @@
+{
+  "name": "play-upload",
+  "summary": "Validate inputs and opt in to uploading a built Android App Bundle to Google Play from the publish workflow.",
+  "status": "experimental",
+  "tested": "fake",
+  "requires": {
+    "variables": {
+      "PLAY_UPLOAD_ENABLED": "Set to \"true\" to allow the upload step to run. Any other value (or unset) keeps uploads disabled.",
+      "ANDROID_PACKAGE_NAME": "The Android application id/package name to publish, for example com.example.app.",
+      "PLAY_STORE_TRACK": "The Google Play track to publish to, for example internal, alpha, beta, or production."
+    },
+    "secrets": [
+      "PLAY_PUBLISHER_SERVICE_ACCOUNT_JSON"
+    ],
+    "packages": {},
+    "addons": ["aab-build"]
+  },
+  "copies": [
+    {
+      "from": "files/scripts/check-play-upload.mjs",
+      "to": "scripts/check-play-upload.mjs"
+    }
+  ],
+  "patches": [
+    {
+      "file": ".github/workflows/_publish.yml",
+      "change": "After a successful AAB build, add a guarded upload step that runs only when vars.PLAY_UPLOAD_ENABLED == 'true'. Run scripts/check-play-upload.mjs with ANDROID_PACKAGE_NAME, PLAY_STORE_TRACK, AAB_PATH, PLAY_UPLOAD_ENABLED and PLAY_PUBLISHER_SERVICE_ACCOUNT_JSON, then call r0adkll/upload-google-play (or your chosen uploader) with the same values. Keep the workflow_call-only trigger and keep all credentials in _publish.yml. See the README for the exact YAML."
+    }
+  ]
+}
