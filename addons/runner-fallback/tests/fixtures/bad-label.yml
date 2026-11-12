@@ -1,0 +1,7 @@
+name: bad-label
+on: workflow_dispatch
+jobs:
+  build:
+    runs-on: [self-hosted, linux]
+    steps:
+      - run: echo hi
