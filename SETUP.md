@@ -34,7 +34,7 @@ In [release-approve.yml](.github/workflows/release-approve.yml), replace the exi
 uses: YOUR-OWNER/YOUR-REPO/.github/workflows/_publish.yml@YOUR-DEFAULT-BRANCH
 ```
 
-The current reference is `wamziliary/rn-release-gate/.github/workflows/_publish.yml@dev`. Replace all three parts when adopting the template, and update the value after a rename or transfer.
+The current reference is `CynthiaWahome/release-gate/.github/workflows/_publish.yml@dev`. Replace all three parts when adopting the template, and update the value after a rename or transfer.
 
 The explicit reference is intentional: it selects the publish workflow definition from that branch instead of resolving a relative reference against the release-request PR.
 
