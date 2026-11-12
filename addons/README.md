@@ -53,7 +53,7 @@ Prefer `copies` over `patches`. A patch means editing a file you may have custom
 | [`runner-fallback`](runner-fallback/README.md) | Pick the runner from a repository variable, falling back to a hosted one | experimental |
 | [`disk-cleanup`](disk-cleanup/README.md) | Free runner disk space before a heavy native build, and fail fast if too little is left | experimental |
 | [`play-version-code`](play-version-code/README.md) | Ask Google Play for the highest existing `versionCode` so the next build can use one more | experimental |
-| `aab-build` | Build a signed Android App Bundle | planned |
+| [`aab-build`](aab-build/README.md) | Build a signed Android App Bundle | experimental |
 | `play-upload` | Upload the bundle to Google Play | planned |
 | `build-number-sync` | Report the released version to a backend endpoint, if one is configured | planned |
 
