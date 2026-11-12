@@ -39,6 +39,7 @@ Each add-on has an `addon.json` describing what it does to a repository. Humans 
 | `tested` | `none`, `fake` (against a stand-in service) or `live` (against the real one) |
 | `requires.variables` | Repository variables it reads, with what each one does |
 | `requires.secrets` | Secret names it reads, by name only, never values |
+| `requires.packages` | npm packages it needs, with a version range |
 | `requires.addons` | Other add-ons it depends on |
 | `copies` | Files copied as they are, as `{ "from": "files/...", "to": "..." }` |
 | `patches` | Edits to files the core already has, as `{ "file": "...", "change": "..." }` |
@@ -51,7 +52,7 @@ Prefer `copies` over `patches`. A patch means editing a file you may have custom
 |---|---|---|
 | [`runner-fallback`](runner-fallback/README.md) | Pick the runner from a repository variable, falling back to a hosted one | experimental |
 | [`disk-cleanup`](disk-cleanup/README.md) | Free runner disk space before a heavy native build, and fail fast if too little is left | experimental |
-| `play-version-code` | Ask Google Play for the highest existing `versionCode` so the next build can use one more | planned |
+| [`play-version-code`](play-version-code/README.md) | Ask Google Play for the highest existing `versionCode` so the next build can use one more | experimental |
 | `aab-build` | Build a signed Android App Bundle | planned |
 | `play-upload` | Upload the bundle to Google Play | planned |
 | `build-number-sync` | Report the released version to a backend endpoint, if one is configured | planned |
