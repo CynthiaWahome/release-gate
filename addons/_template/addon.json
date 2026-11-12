@@ -1,0 +1,13 @@
+{
+  "name": "your-add-on-name",
+  "summary": "One sentence describing what this adds.",
+  "status": "planned",
+  "tested": "none",
+  "requires": {
+    "variables": {},
+    "secrets": [],
+    "addons": []
+  },
+  "copies": [],
+  "patches": []
+}
