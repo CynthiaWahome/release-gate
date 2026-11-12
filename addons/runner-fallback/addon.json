@@ -1,0 +1,29 @@
+{
+  "name": "runner-fallback",
+  "summary": "Choose the runner from a repository variable, falling back to a hosted one, and check that no job hard-codes its runner.",
+  "status": "experimental",
+  "tested": "fake",
+  "requires": {
+    "variables": {
+      "RUNNER_OS": "Optional. The runner label every job should use, for example a self-hosted runner. When unset, jobs run on ubuntu-latest."
+    },
+    "secrets": [],
+    "addons": []
+  },
+  "copies": [
+    {
+      "from": "files/scripts/check-runner-fallback.sh",
+      "to": "scripts/check-runner-fallback.sh"
+    }
+  ],
+  "patches": [
+    {
+      "file": ".github/workflows/*.yml",
+      "change": "Replace each `runs-on: ubuntu-latest` with `runs-on: ${{ vars.RUNNER_OS || 'ubuntu-latest' }}`. Mark any job that must stay on one specific machine with `# runner-fallback: exempt (why)`."
+    },
+    {
+      "file": ".github/workflows/ci.yml",
+      "change": "Optionally add a step that runs scripts/check-runner-fallback.sh. See the README."
+    }
+  ]
+}

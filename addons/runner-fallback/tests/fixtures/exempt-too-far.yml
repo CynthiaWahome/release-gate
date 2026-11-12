@@ -1,0 +1,9 @@
+name: exempt-too-far
+on: workflow_dispatch
+jobs:
+  build:
+    # runner-fallback: exempt (this comment belongs to a different line)
+    name: not the runs-on line
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi
