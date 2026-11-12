@@ -55,7 +55,7 @@ Prefer `copies` over `patches`. A patch means editing a file you may have custom
 | [`play-version-code`](play-version-code/README.md) | Ask Google Play for the highest existing `versionCode` so the next build can use one more | experimental |
 | [`aab-build`](aab-build/README.md) | Build a signed Android App Bundle | experimental |
 | [`play-upload`](play-upload/README.md) | Upload the bundle to Google Play | experimental |
-| `build-number-sync` | Report the released version to a backend endpoint, if one is configured | planned |
+| [`build-number-sync`](build-number-sync/README.md) | Report the released version to a backend endpoint, if one is configured | experimental |
 
 ## Testing
 
