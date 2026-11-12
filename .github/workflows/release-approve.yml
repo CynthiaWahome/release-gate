@@ -120,7 +120,7 @@ jobs:
     name: Publish the approved release
     needs: verify
     if: needs.verify.outputs.approved == 'true'
-    uses: wamziliary/rn-release-gate/.github/workflows/_publish.yml@dev
+    uses: CynthiaWahome/release-gate/.github/workflows/_publish.yml@dev
     # A called workflow can never have more permission than this job grants.
     permissions:
       contents: read

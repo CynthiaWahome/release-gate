@@ -34,7 +34,7 @@ In [release-approve.yml](.github/workflows/release-approve.yml), replace the exi
 uses: YOUR-OWNER/YOUR-REPO/.github/workflows/_publish.yml@YOUR-DEFAULT-BRANCH
 ```
 
-The current reference is `wamziliary/rn-release-gate/.github/workflows/_publish.yml@dev`. Replace all three parts when adopting the template, and update the value after a rename or transfer.
+The current reference is `CynthiaWahome/release-gate/.github/workflows/_publish.yml@dev`. Replace all three parts when adopting the template, and update the value after a rename or transfer.
 
 The explicit reference is intentional: it selects the publish workflow definition from that branch instead of resolving a relative reference against the release-request PR.
 
@@ -111,6 +111,23 @@ For a new repository, replace the sample app files with your application. For an
 
 Before enabling real uploads, complete the production checklist below.
 
+## Using the gate
+
+### 1. Request a release
+
+Open **Actions → Release 1: Request → Run workflow**, select the intended branch, app, and track, then run it. The bot opens a PR into `release-gate`; ask an authorised reviewer to review it.
+
+### 2. Approve a release
+
+A different authorised person opens the request PR and submits **Review changes → Approve**. The gate checks the request before calling the publish workflow.
+
+> **Do not merge the request PR.**  
+> `release-gate` is an isolated holding branch for release requests—not somewhere you merge application changes. This is an approval queue, not a merge queue wearing a different hat.
+
+- **Success:** The workflow closes the request and deletes its branch.
+- **Failure:** The request stays open. Inspect the logs and, for real uploads, the store state before rerunning—a failed job does not guarantee nothing was uploaded.
+- **Changed your mind?** Close an unapproved request without merging it.
+
 ## Workflow reference
 
 | Workflow | File | What starts it |
@@ -134,7 +151,7 @@ Use two accounts with permission to submit approving reviews. Put the requester 
 - [ ] A separate test request is merged; merging triggers the notice, not publishing.
 - [ ] On a disposable branch, adding `workflow_dispatch` to `_publish.yml` makes the publish-trigger guard fail. Discard that test change afterward.
 
-See [Using the gate](README.md#using-the-gate) for the everyday request and approval steps.
+See [Using the gate](#using-the-gate) for the everyday request and approval steps.
 
 ## Before you give it the store keys
 
