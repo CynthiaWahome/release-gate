@@ -92,15 +92,23 @@ jobs:
           track="$(jq -er '.track // empty' <<< "$request_json")" || deny "the request file has no track."
           requested_by="$(jq -er '.requested_by // empty' <<< "$request_json")" || deny "the request file has no requested_by."
           stored_commit="$(jq -er '.commit // empty' <<< "$request_json")" || deny "the request file has no commit."
-          [[ "$stored_commit" == "$HEAD_SHA" ]] || deny "the request file was modified after the PR was opened (commit mismatch)."
 
-          # 3b. The pull request must contain exactly one commit—the bot's original.
-          # If someone pushed a new commit to the branch (or force-pushed a different
-          # single commit), the requester field may have been tampered with.
-          commit_count="$(gh api "repos/$REPO/pulls/$PR_NUMBER/commits" --jq '. | length')"
-          [[ "$commit_count" == "1" ]] || deny "the pull request has $commit_count commits; expected exactly one (the bot's original)."
-          head_author="$(gh api "repos/$REPO/commits/$HEAD_SHA" --jq '.author.login // .committer.login')"
-          [[ "$head_author" == "github-actions[bot]" ]] || deny "the pull request's head commit was not authored by github-actions[bot]."
+          # 3b. The request file must be exactly as the automation wrote it.
+          # Exactly one commit may touch it, that commit must be the PR head,
+          # and it must be authored by github-actions[bot]. Any later push
+          # that rewrites the requester field fails this check. The stored
+          # commit is the source commit to release, not the request-head SHA;
+          # the two are deliberately kept distinct. Inherited commits from
+          # the source branch do not touch this file, so a failed gate-branch
+          # push does not trip this check.
+          mapfile -t touching < <(gh api --paginate "repos/$REPO/commits" \
+            -f path="$request_file" -f sha="$HEAD_SHA" \
+            --jq '.[] | .sha + " " + (.author.login // .commit.author.name)')
+          [[ "${#touching[@]}" -eq 1 ]] || deny "expected exactly one commit to touch $request_file, found ${#touching[@]}."
+          touching_sha="${touching[0]%% *}"
+          touching_author="${touching[0]#* }"
+          [[ "$touching_sha" == "$HEAD_SHA" ]] || deny "the request file was modified after the PR was opened."
+          [[ "$touching_author" == "github-actions[bot]" ]] || deny "the commit that wrote the request file was not authored by github-actions[bot]."
 
           # 4. App and track must be on the fixed lists, read from the
           #    default branch and not from the request branch.
@@ -136,6 +144,7 @@ jobs:
     # A called workflow can never have more permission than this job grants.
     permissions:
       contents: read
+      pull-requests: read
     with:
       app: ${{ needs.verify.outputs.app }}
       track: ${{ needs.verify.outputs.track }}
