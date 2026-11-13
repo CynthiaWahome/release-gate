@@ -43,6 +43,7 @@ jobs:
       app: ${{ steps.check.outputs.app }}
       track: ${{ steps.check.outputs.track }}
       requested_by: ${{ steps.check.outputs.requested_by }}
+      head_sha: ${{ steps.check.outputs.head_sha }}
     steps:
       - name: Check approver, request file and self-approval
         id: check
@@ -90,6 +91,16 @@ jobs:
           app="$(jq -er '.app // empty' <<< "$request_json")" || deny "the request file has no app."
           track="$(jq -er '.track // empty' <<< "$request_json")" || deny "the request file has no track."
           requested_by="$(jq -er '.requested_by // empty' <<< "$request_json")" || deny "the request file has no requested_by."
+          stored_commit="$(jq -er '.commit // empty' <<< "$request_json")" || deny "the request file has no commit."
+          [[ "$stored_commit" == "$HEAD_SHA" ]] || deny "the request file was modified after the PR was opened (commit mismatch)."
+
+          # 3b. The pull request must contain exactly one commit—the bot's original.
+          # If someone pushed a new commit to the branch (or force-pushed a different
+          # single commit), the requester field may have been tampered with.
+          commit_count="$(gh api "repos/$REPO/pulls/$PR_NUMBER/commits" --jq '. | length')"
+          [[ "$commit_count" == "1" ]] || deny "the pull request has $commit_count commits; expected exactly one (the bot's original)."
+          head_author="$(gh api "repos/$REPO/commits/$HEAD_SHA" --jq '.author.login // .committer.login')"
+          [[ "$head_author" == "github-actions[bot]" ]] || deny "the pull request's head commit was not authored by github-actions[bot]."
 
           # 4. App and track must be on the fixed lists, read from the
           #    default branch and not from the request branch.
@@ -106,6 +117,7 @@ jobs:
             echo "app=$app"
             echo "track=$track"
             echo "requested_by=$requested_by"
+            echo "head_sha=$HEAD_SHA"
           } >> "$GITHUB_OUTPUT"
           echo "Approval by @$APPROVER accepted for $app -> $track (requested by @$requested_by)."
 
@@ -130,6 +142,7 @@ jobs:
       requested_by: ${{ needs.verify.outputs.requested_by }}
       approved_by: ${{ github.event.review.user.login }}
       request_url: ${{ github.event.pull_request.html_url }}
+      head_sha: ${{ needs.verify.outputs.head_sha }}
     secrets: inherit
 
   finish:
