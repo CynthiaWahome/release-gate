@@ -97,6 +97,7 @@ Release requests are opened against `release-gate`, an isolated holding branch�
 | **Attacker clicks "Run workflow" to deploy rogue release** | Deployment runs immediately. | ❌ Blocked: Publish workflow has no manual dispatch trigger. |
 | **Engineer attempts to approve their own release** | Permitted unless branch rules block it. | ❌ Blocked: Gate fails with `Requester cannot approve`. |
 | **Attacker attempts to add triggers to publish workflow** | PR merged if CI checks pass. | ❌ Blocked: CI trigger guard fails the build automatically. |
+| **Attacker pushes new commit to request branch to change `requested_by`** | Permitted (requester can be overwritten). | ❌ Blocked: Gate checks that exactly one commit touches the request file, that commit is the PR head, and it's authored by `github-actions[bot]`. Publish also re-verifies the PR head SHA hasn't changed ("dismiss stale approvals"). |
 
 ---
 

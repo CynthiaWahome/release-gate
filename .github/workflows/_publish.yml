@@ -34,6 +34,10 @@ on:
         description: "Link to the approved release-request pull request"
         required: true
         type: string
+      head_sha:
+        description: "Head SHA at time of approval (must match PR head)"
+        required: true
+        type: string
 
 # One publish per app at a time. A second approved request for the same app
 # waits instead of cancelling the first.
@@ -43,6 +47,7 @@ concurrency:
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
   publish:
@@ -50,8 +55,29 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - name: Checkout
+      - name: Checkout the approved commit
         uses: actions/checkout@v5
+        with:
+          # Build exactly what was approved, not whatever the default ref
+          # resolves to. This is the "bind approval to the head SHA" half;
+          # the guard step below refuses if the PR has moved.
+          ref: ${{ inputs.head_sha }}
+
+      # Guard: dismiss stale approvals. If the PR head SHA has moved since
+      # approval (someone pushed to the request branch), refuse to publish.
+      - name: Verify PR head SHA is unchanged since approval
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          APPROVED_HEAD_SHA: ${{ inputs.head_sha }}
+        run: |
+          current_head="$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '.head.sha')"
+          [[ "$current_head" == "$APPROVED_HEAD_SHA" ]] || {
+            echo "::error::PR head SHA changed since approval (approved at $APPROVED_HEAD_SHA, now $current_head). Publish blocked."
+            exit 1
+          }
+          echo "PR head SHA unchanged ($APPROVED_HEAD_SHA). Safe to publish."
 
       - name: Setup Node.js
         uses: actions/setup-node@v5
