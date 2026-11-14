@@ -121,6 +121,10 @@ jobs:
           # 5. Nobody approves their own request.
           [[ "$(lower "$requested_by")" != "$approver" ]] || deny "@$APPROVER requested this release, so their own approval does not count. A different authorised approver is needed."
 
+          # 6. Verify the review approved the PR's head commit, not an older commit.
+          review_commit="${{ github.event.review.commit_id }}"
+          [[ -z "$review_commit" || "$review_commit" == "$HEAD_SHA" ]] || deny "the review was submitted for commit $review_commit, but the PR head is $HEAD_SHA (stale review)."
+
           {
             echo "approved=true"
             echo "app=$app"

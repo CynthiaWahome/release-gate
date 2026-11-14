@@ -37,9 +37,10 @@ Runs when a review is submitted on any pull request. It continues only when **al
 6. Exactly one request file is found on the pull request.
 7. The request file has `app`, `track`, `requested_by`, and `commit`, and `app` and `track` are on the fixed lists.
 8. Exactly one commit touches the request file, that commit is the PR's head commit, and it is based on the source commit recorded in the request file. The request commit is bound to the trusted source commit via its parent SHA, not via commit-author attribution. Commit author names or email are never used as producer authentication.
-9. The approval records the PR's head SHA.
-10. The publish job re-verifies the PR's head SHA has not changed since approval ("dismiss stale approvals").
-11. The approver is not the person named in `requested_by`.
+9. The review was submitted for the PR's exact head commit (`github.event.review.commit_id == HEAD_SHA`), preventing approvals submitted against older commits from releasing unreviewed changes.
+10. The approval records the PR's head SHA.
+11. The publish job re-verifies the PR's head SHA has not changed since approval ("dismiss stale approvals").
+12. The approver is not the person named in `requested_by`.
 
 Rules for failure:
 
