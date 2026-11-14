@@ -36,7 +36,7 @@ Runs when a review is submitted on any pull request. It continues only when **al
 5. The approver is on the approver list.
 6. Exactly one request file is found on the pull request.
 7. The request file has `app`, `track`, `requested_by`, and `commit`, and `app` and `track` are on the fixed lists.
-8. Exactly one commit touches the request file, that commit is the PR's head commit, and it was authored by `github-actions[bot]` (the request was not modified after the PR was opened).
+8. Exactly one commit touches the request file, that commit is the PR's head commit, and GitHub resolves its author as `github-actions[bot]` (the request was not modified after the PR was opened). The commits-list request uses `--method GET`; only the GitHub-resolved `author.login` is trusted, never the raw commit author name.
 9. The approval records the PR's head SHA.
 10. The publish job re-verifies the PR's head SHA has not changed since approval ("dismiss stale approvals").
 11. The approver is not the person named in `requested_by`.
@@ -79,6 +79,6 @@ After Publish finishes:
 These are not solved by the workflows alone. The README explains the settings that close them.
 
 1. **Write access to the repository is still powerful.** Someone who can push branches can push a workflow of their own. If store credentials are plain repository secrets, that workflow can read them. The fix is to keep those credentials in a GitHub Environment with its own access rules.
-2. **The Approve workflow verifies the request file was not modified after the PR was opened.** It checks that exactly one commit touches the request file, that commit is the PR's head, and it was authored by `github-actions[bot]`. Combined with restricting who can push to `release-request/**` (a branch ruleset), this prevents the "fake requester" attack where someone with write access pushes a new commit to an opened request PR to change the `requested_by` field.
+2. **The Approve workflow verifies the request file was not modified after the PR was opened.** It checks that exactly one commit touches the request file, that commit is the PR's head, and GitHub resolves its author as `github-actions[bot]`. This defends against added commits and force-pushes that do not spoof the bot's email. Full producer authentication requires signed commits (see pending item below). Combined with restricting who can push to `release-request/**` (a branch ruleset), this prevents the "fake requester" attack where someone with write access pushes a new commit to an opened request PR to change the `requested_by` field.
 3. **The Approve workflow runs from the pull request's merge ref.** GitHub's documentation says review-triggered runs use the pull request's merge commit, so the same ruleset in point 2 also protects the Approve workflow itself from being edited on a request branch.
 4. **The approver list is only as safe as the workflow file.** Require a code-owner review for changes under `.github/workflows/`.
