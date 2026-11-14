@@ -4,6 +4,13 @@
   <b>One person requests. Another approves. Merging is not a release strategy.</b>
 </p>
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://res.cloudinary.com/cycy/image/upload/v1794669470/release-gate-flow-dark-v2.svg">
+    <img src="https://res.cloudinary.com/cycy/image/upload/v1794669474/release-gate-flow-light-v2.svg" alt="A asks to ship. B reviews. If B approves, SHIP_IT and the release ships. If there is no approval, !SHIP_IT and nothing ships." width="640">
+  </picture>
+</p>
+
 <br>
 
 [![Shell](https://img.shields.io/badge/Shell-Bash-4EAA25?style=for-the-badge&logo=gnubash&logoColor=white)](scripts/check-publish-trigger.sh)
@@ -76,16 +83,6 @@ flowchart LR
 - [Setup guide](SETUP.md): adoption, permissions, using the gate, first-run checklist, and the production checklist.
 - [Specification](SPEC.md): the exact gate rules and known limits.
 - [Threat model](THREAT_MODEL.md): the incident behind the design and the defences it led to.
-
-<br>
-
----
-
-<p align="center">
-  <b>Call us old-fashioned</b> <img src="https://res.cloudinary.com/cycy/image/upload/v1794422080/tlbwyleiin7zpohuotf9.png" width="45" height="44" align="absmiddle" alt="adjusts glasses" /><br>
-  We just think shipping a broken binary to thousands of devices... <img src="https://res.cloudinary.com/cycy/image/upload/v1794423065/bzdnlaiqlf6t0vgbdqx4.png" width="56" height="44" align="absmiddle" alt="shades" /><br>
-  Should take two people agreeing it's a good idea <a href="https://github.com/CynthiaWahome"><img src="https://res.cloudinary.com/cycy/image/upload/v1794422081/lamllkkir4ch4kgdvxne.gif" width="44" height="44" align="absmiddle" alt="wamzy" /></a>
-</p>
 
 <br>
 

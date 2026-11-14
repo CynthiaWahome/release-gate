@@ -43,6 +43,7 @@ jobs:
       app: ${{ steps.check.outputs.app }}
       track: ${{ steps.check.outputs.track }}
       requested_by: ${{ steps.check.outputs.requested_by }}
+      head_sha: ${{ steps.check.outputs.head_sha }}
     steps:
       - name: Check approver, request file and self-approval
         id: check
@@ -90,6 +91,25 @@ jobs:
           app="$(jq -er '.app // empty' <<< "$request_json")" || deny "the request file has no app."
           track="$(jq -er '.track // empty' <<< "$request_json")" || deny "the request file has no track."
           requested_by="$(jq -er '.requested_by // empty' <<< "$request_json")" || deny "the request file has no requested_by."
+          stored_commit="$(jq -er '.commit // empty' <<< "$request_json")" || deny "the request file has no commit."
+
+          # 3b. Verify the request content and SHA against trusted metadata from
+          # the request workflow. The request workflow wrote this file on a new
+          # branch and recorded the source commit it was asked to release as
+          # `commit`. The commit that wrote the request file must be based on
+          # that source commit, which binds the approved request to the trusted
+          # source commit rather than to mutable commit-author attribution.
+          # Commit author names or email attribution are never used as producer
+          # authentication: they can be forged by anyone who can push.
+          mapfile -t touching < <(gh api --method GET --paginate "repos/$REPO/commits" \
+            -f path="$request_file" -f sha="$HEAD_SHA" \
+            --jq '.[] | .sha')
+          [[ "${#touching[@]}" -eq 1 ]] || deny "expected exactly one commit to touch $request_file, found ${#touching[@]}."
+          touching_sha="${touching[0]}"
+          [[ "$touching_sha" == "$HEAD_SHA" ]] || deny "the request file was modified after the PR was opened."
+          parent_sha="$(gh api "repos/$REPO/commits/$HEAD_SHA" --jq '.parents[0].sha // empty')"
+          [[ -n "$parent_sha" ]] || deny "the commit that wrote the request file has no parent commit."
+          [[ "$parent_sha" == "$stored_commit" ]] || deny "the request commit is not based on the source commit recorded in the request."
 
           # 4. App and track must be on the fixed lists, read from the
           #    default branch and not from the request branch.
@@ -101,11 +121,16 @@ jobs:
           # 5. Nobody approves their own request.
           [[ "$(lower "$requested_by")" != "$approver" ]] || deny "@$APPROVER requested this release, so their own approval does not count. A different authorised approver is needed."
 
+          # 6. Verify the review approved the PR's head commit, not an older commit.
+          review_commit="${{ github.event.review.commit_id }}"
+          [[ -z "$review_commit" || "$review_commit" == "$HEAD_SHA" ]] || deny "the review was submitted for commit $review_commit, but the PR head is $HEAD_SHA (stale review)."
+
           {
             echo "approved=true"
             echo "app=$app"
             echo "track=$track"
             echo "requested_by=$requested_by"
+            echo "head_sha=$HEAD_SHA"
           } >> "$GITHUB_OUTPUT"
           echo "Approval by @$APPROVER accepted for $app -> $track (requested by @$requested_by)."
 
@@ -124,12 +149,14 @@ jobs:
     # A called workflow can never have more permission than this job grants.
     permissions:
       contents: read
+      pull-requests: read
     with:
       app: ${{ needs.verify.outputs.app }}
       track: ${{ needs.verify.outputs.track }}
       requested_by: ${{ needs.verify.outputs.requested_by }}
       approved_by: ${{ github.event.review.user.login }}
       request_url: ${{ github.event.pull_request.html_url }}
+      head_sha: ${{ needs.verify.outputs.head_sha }}
     secrets: inherit
 
   finish:
