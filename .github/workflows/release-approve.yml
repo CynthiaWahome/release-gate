@@ -15,6 +15,8 @@ env:
 concurrency:
   group: release-approve-${{ github.event.pull_request.number }}
   cancel-in-progress: false
+  # Keep every waiting run: the default replaces a waiting approval.
+  queue: max
 
 jobs:
   verify:
@@ -196,8 +198,14 @@ jobs:
           # Close and delete are separate and repeatable: already done counts as done.
           pr_state="$(gh pr view "$PR_NUMBER" --repo "$REPO" --json state --jq .state)"
           if [[ "$pr_state" == "OPEN" ]]; then gh pr close "$PR_NUMBER" --repo "$REPO"; fi
-          if gh api "repos/$REPO/git/ref/heads/$HEAD_REF" > /dev/null 2>&1; then
+          # Only a 404 means the branch is already gone; any other failure is reported.
+          if ref_out="$(gh api "repos/$REPO/git/ref/heads/$HEAD_REF" 2>&1)"; then
             gh api --method DELETE "repos/$REPO/git/refs/heads/$HEAD_REF"
+          elif grep -q "HTTP 404" <<< "$ref_out"; then
+            echo "Request branch already deleted."
+          else
+            echo "::error::Could not check the request branch, so it may still exist: $ref_out"
+            exit 1
           fi
           # Fail on purpose so a tampered request shows as a red run.
           echo "::error::Request #$PR_NUMBER was refused as tampered with and has been closed. See the comment on the pull request."
@@ -251,6 +259,6 @@ jobs:
           else
             # The approval was valid and the failure is usually infrastructure: keep the
             # request open so a re-run can retry the same approval (SPEC.md).
-            gh pr comment "$PR_NUMBER" --repo "$REPO" --body "Approved by @$APPROVER, but the publish did not succeed (result: \`$RESULT\`). Nothing was published. This request is left open on purpose. Fix the cause, then re-run the failed jobs here: $RUN_URL"
+            gh pr comment "$PR_NUMBER" --repo "$REPO" --body "Approved by @$APPROVER, but the publish did not succeed (result: \`$RESULT\`). Nothing was published. If this request is still open and unchanged, fix the cause and re-run the failed jobs here: $RUN_URL. If it was closed or changed, the publish guard refuses it for good: start a new release request."
             echo "::notice::Publish result was $RESULT. Request #$PR_NUMBER left open for retry."
           fi

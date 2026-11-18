@@ -19,7 +19,7 @@ Publishing an app to a store must need two different, named people: one who requ
 ### 1. Request (`release-request.yml`)
 
 1. A person starts it by hand and chooses an app and a track.
-   It stops straight away, before writing anything, unless it was started from the default branch.
+   It stops straight away, before writing anything, unless it was started from the default branch. The full ref is compared, so a tag with the same name does not count.
 2. It checks both values against fixed lists. Anything else stops the run.
 3. It writes `release-requests/<id>.json` with `app`, `track`, `requested_by` (the person who started the run) and `requested_at`.
 4. It pushes that file on a new branch named `release-request/<id>`.
@@ -52,6 +52,7 @@ Rules for failure:
 - If any check fails, nothing is published, and a comment on the pull request says which check failed.
 - Anything unreadable or missing counts as a failure. The gate fails closed.
 - A GitHub API read that fails is a plain refusal. It never closes a request: only a successful read that shows tampering does.
+- Cleanup of a tampered request treats "branch not found" as done. Any other failure to look the branch up fails the run, so cleanup is never silently incomplete.
 - **Refusals that mean the request itself cannot be trusted** (an extra or replaced commit, a force-push, restored branch or reopen in the event log, a requester in the file that does not match the request run, an extra changed file, a malformed request file): the request pull request is closed, its branch is deleted, and the run is shown as failed (red).
 - **Refusals about people or timing** (not an approver, self-approval, a stale review, a closed request, an app or track not on the lists): the request stays as it is and the run stays green, because another approver can still approve a request that is fine. The comment on the pull request is the verdict.
 
@@ -60,13 +61,13 @@ When every check passes, Approve calls Publish with the app, the track, the requ
 After Publish finishes:
 
 - **Success:** comment, close the request pull request, delete its branch.
-- **Failure:** comment, and leave the pull request open with its branch. The approval was valid, so re-running the failed run (same approval, same commit) is allowed and needs no new approval.
+- **Failure:** comment, and leave the pull request open with its branch. The approval was valid, so re-running the failed run (same approval, same commit) is allowed and needs no new approval. This holds only while the request is still open and unchanged. If it was closed or changed, the publish guard refuses it for good and a new request is needed. The comment says which case applies.
 
 ### 3. Publish (`_publish.yml`)
 
 1. Its only trigger is `workflow_call`. It cannot be started by a push, a pull request or the manual-run button.
 2. It is the only workflow that may use store or signing credentials.
-3. Before it publishes, it checks again that the request is unchanged, open and clean (see Approve rule 15).
+3. Before it builds, and again right before it publishes, it checks that the request is unchanged, open and clean (see Approve rule 15). The second check covers a request closed while the build runs.
 4. In this template it is a dry run: it builds the sample artifact and prints what it would upload. Template users replace that step with their real store upload.
 
 ## Supporting rules
@@ -74,7 +75,8 @@ After Publish finishes:
 - **Trigger guard.** Normal CI fails if `_publish.yml` has any trigger other than `workflow_call`.
 - **Approver list lives in the workflow file.** It is not read from `CODEOWNERS` at run time, so changing who may approve is always a visible change to a workflow.
 - **Inputs are data, not code.** Values typed by a person are passed to scripts as environment variables and never pasted into script text.
-- **One approval run at a time per pull request.** A second approval waits for the first run, including its close step, and then finds a closed request. Two quick approvals publish once.
+- **One approval run at a time per pull request.** A second approval waits for the first run, including its close step, and then finds a closed request. Two quick approvals publish once. Every waiting run is kept (`queue: max`), so a later comment review cannot replace a waiting approval.
+- **Workflow check.** CI fails on a repeated YAML key or a shell syntax error in any `run:` step (`scripts/check-workflows.rb`).
 - **Permissions.** The Approve check job needs `actions: read` to read the request run record. Without it, GitHub answers with HTTP 403 and every honest approval is refused.
 - **Merge notice.** If someone merges a request pull request, a comment explains that merging publishes nothing and that the request needs an approval instead.
 
