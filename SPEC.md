@@ -19,6 +19,7 @@ Publishing an app to a store must need two different, named people: one who requ
 ### 1. Request (`release-request.yml`)
 
 1. A person starts it by hand and chooses an app and a track.
+   It stops straight away, before writing anything, unless it was started from the default branch.
 2. It checks both values against fixed lists. Anything else stops the run.
 3. It writes `release-requests/<id>.json` with `app`, `track`, `requested_by` (the person who started the run) and `requested_at`.
 4. It pushes that file on a new branch named `release-request/<id>`.
@@ -41,15 +42,16 @@ Runs when a review is submitted on any pull request. It continues only when **al
 10. The requester is read from the request run's record in the Actions API, not trusted from the file. The run id is the last part of the branch name. The run must be a manual run of `release-request.yml` on the default branch at the recorded source commit, and the person who started it must match `requested_by` in the file.
 11. The approved commit changes the request file and no other file.
 12. `app` and `track` are on the fixed lists, read from the default branch.
-13. The review was submitted for the PR's exact head commit (`github.event.review.commit_id == HEAD_SHA`), preventing approvals submitted against older commits from releasing unreviewed changes.
+13. The review carries a commit id, and it is the PR's exact head commit (`github.event.review.commit_id == HEAD_SHA`). A missing id fails. This prevents approvals submitted against older commits from releasing unreviewed changes.
 14. The approval records the PR's head SHA.
-15. The publish job re-verifies the PR's head SHA has not changed since approval ("dismiss stale approvals").
+15. The publish job re-verifies, right before it publishes, that the PR's head SHA has not changed since approval ("dismiss stale approvals"), that the request is still open, and that its event log still shows no force-push, restore or reopen. This also covers a rerun of failed jobs, which skips the approval check.
 16. The approver is not the person who started the request run (the requester).
 
 Rules for failure:
 
 - If any check fails, nothing is published, and a comment on the pull request says which check failed.
 - Anything unreadable or missing counts as a failure. The gate fails closed.
+- A GitHub API read that fails is a plain refusal. It never closes a request: only a successful read that shows tampering does.
 - **Refusals that mean the request itself cannot be trusted** (an extra or replaced commit, a force-push, restored branch or reopen in the event log, a requester in the file that does not match the request run, an extra changed file, a malformed request file): the request pull request is closed, its branch is deleted, and the run is shown as failed (red).
 - **Refusals about people or timing** (not an approver, self-approval, a stale review, a closed request, an app or track not on the lists): the request stays as it is and the run stays green, because another approver can still approve a request that is fine. The comment on the pull request is the verdict.
 
@@ -64,13 +66,15 @@ After Publish finishes:
 
 1. Its only trigger is `workflow_call`. It cannot be started by a push, a pull request or the manual-run button.
 2. It is the only workflow that may use store or signing credentials.
-3. In this template it is a dry run: it builds the sample artifact and prints what it would upload. Template users replace that step with their real store upload.
+3. Before it publishes, it checks again that the request is unchanged, open and clean (see Approve rule 15).
+4. In this template it is a dry run: it builds the sample artifact and prints what it would upload. Template users replace that step with their real store upload.
 
 ## Supporting rules
 
 - **Trigger guard.** Normal CI fails if `_publish.yml` has any trigger other than `workflow_call`.
 - **Approver list lives in the workflow file.** It is not read from `CODEOWNERS` at run time, so changing who may approve is always a visible change to a workflow.
 - **Inputs are data, not code.** Values typed by a person are passed to scripts as environment variables and never pasted into script text.
+- **One approval run at a time per pull request.** A second approval waits for the first run, including its close step, and then finds a closed request. Two quick approvals publish once.
 - **Permissions.** The Approve check job needs `actions: read` to read the request run record. Without it, GitHub answers with HTTP 403 and every honest approval is refused.
 - **Merge notice.** If someone merges a request pull request, a comment explains that merging publishes nothing and that the request needs an approval instead.
 
