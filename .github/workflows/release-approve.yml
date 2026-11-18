@@ -1,23 +1,17 @@
 name: "Release 2: Approve and publish"
 
-# The only workflow allowed to call _publish.yml.
-#
-# It runs when a review is submitted on any pull request, then narrows that
-# down to one case: an authorised person, who is not the requester, approving
-# a release request that the automation opened. Every rule is listed in
-# SPEC.md. Anything that cannot be read or checked counts as "no".
+# The only workflow allowed to call _publish.yml. Every rule is in SPEC.md,
+# section 2 (Approve). Anything unreadable or missing counts as "no".
 on:
   pull_request_review:
     types: [submitted]
 
 env:
-  # Who may approve a release. Kept here, in the workflow, and not read from
-  # CODEOWNERS at run time: changing who can release must always be a visible
-  # change to this file. Replace with your own logins (space separated).
+  # Kept in the workflow, not read from CODEOWNERS at run time, so changing who
+  # can release is always a visible diff. Replace with your own logins.
   ALLOWED_APPROVERS: "CynthiaWahome wamzii"
 
-# One approval run at a time per pull request. A second approval waits for the
-# first run (including its close step) to finish, then sees a closed request.
+# One approval run at a time per pull request (SPEC.md, supporting rules).
 concurrency:
   group: release-approve-${{ github.event.pull_request.number }}
   cancel-in-progress: false
@@ -25,14 +19,8 @@ concurrency:
 jobs:
   verify:
     name: Verify the approval
-    # Checked before the job starts, so an ordinary review elsewhere in the
-    # repository never runs this at all:
-    #   - the pull request targets the gate branch;
-    #   - the review is an approval;
-    #   - the automation opened the pull request. Without this, a person
-    #     could open their own pull request with a request file naming
-    #     someone else as requester, then approve it themselves;
-    #   - the branch is a request branch in this repository, not a fork.
+    # Checked before the job starts, so unrelated reviews never run it
+    # (SPEC.md, Approve rules 1 to 4).
     if: >-
       github.event.pull_request.base.ref == 'release-gate' &&
       github.event.review.state == 'approved' &&
@@ -66,19 +54,15 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Record a refusal: explain on the pull request, publish nothing.
+          # A refusal about a person or timing: comment, publish nothing.
           deny() {
             echo "::error::$1"
             gh pr comment "$PR_NUMBER" --repo "$REPO" --body "Release not started: $1" || true
             echo "approved=false" >> "$GITHUB_OUTPUT"
             exit 0
           }
-          # Record a refusal that means the request itself cannot be trusted
-          # (it was edited, replaced or malformed). The request is dead: the
-          # separate "quarantine" job below closes it and deletes its branch,
-          # so a poisoned request cannot be approved later. Refusals about
-          # people (wrong approver, self-approval) do not use this one: the
-          # request is fine and another approver can still approve it.
+          # A refusal that means the request cannot be trusted: the quarantine job
+          # closes it. See SPEC.md, rules for failure.
           deny_tampered() {
             echo "::error::$1"
             gh pr comment "$PR_NUMBER" --repo "$REPO" --body "Release not started: $1 This request cannot be trusted, so it is being closed. Start a new release request." || true
@@ -86,31 +70,22 @@ jobs:
             echo "tampered=true" >> "$GITHUB_OUTPUT"
             exit 0
           }
-          # If anything below fails unexpectedly, the step fails and the
-          # output is never set to true, so the publish job is skipped.
+          # An unexpected failure leaves approved unset, so publish is skipped.
 
           lower() { tr '[:upper:]' '[:lower:]' <<< "$1"; }
-          # Non-empty lines of a string, one per line. Used after each API
-          # read has been checked on its own, so a failed read can never look
-          # like an empty list.
+          # Non-empty lines of $1. Every API read is checked before this is used, so a
+          # failed read never looks like an empty list.
           lines() { grep . <<< "$1" || true; }
           approver="$(lower "$APPROVER")"
 
-          # 1. The approver must be on the list. Logins are compared without
-          #    regard to case, because GitHub treats them that way.
+          # Rule 5: the approver is on the list (compared without regard to case).
           allowed=false
           for name in $ALLOWED_APPROVERS; do
             if [[ "$(lower "$name")" == "$approver" ]]; then allowed=true; fi
           done
           [[ "$allowed" == "true" ]] || deny "@$APPROVER is not an authorised release approver. This request still needs an authorised approval."
 
-          # 1b. A request is single-use. It must still be open, and GitHub's
-          #     own event log for the pull request must show none of the things
-          #     a legitimate request never goes through: a force-push over the
-          #     branch, a deleted branch that was restored, or a pull request
-          #     that was reopened. Nobody can edit that log by pushing, and it
-          #     works on repositories that cannot use branch rulesets. If the
-          #     log cannot be read, the answer is no.
+          # Rule 6: open, and no force-push, restore or reopen in the event log.
           pr_state="$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '.state')" \
             || deny "the pull request state could not be read."
           [[ "$pr_state" == "open" ]] \
@@ -121,8 +96,7 @@ jobs:
           [[ -z "$bad_events" ]] \
             || deny_tampered "the request history shows: $bad_events. A legitimate request is never force-pushed, restored or reopened."
 
-          # 2. Exactly one request file. Found by its path, across every page
-          #    of the changed-files list, never by "the first changed file".
+          # Rule 7: exactly one request file, found by path across every page.
           files_out="$(gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/files" \
             --jq '.[] | select(.filename | startswith("release-requests/")) | select(.filename | endswith(".json")) | .filename')" \
             || deny "the pull request's changed files could not be read."
@@ -130,7 +104,7 @@ jobs:
           [[ "${#files[@]}" -eq 1 ]] || deny_tampered "expected exactly one request file under release-requests/, found ${#files[@]}."
           request_file="${files[0]}"
 
-          # 3. Read the request exactly as it is at the approved commit.
+          # Rule 8: read the request at the approved commit.
           request_json="$(gh api "repos/$REPO/contents/$request_file?ref=$HEAD_SHA" --jq '.content' | base64 --decode)" \
             || deny "the request file could not be read."
           app="$(jq -er '.app // empty' <<< "$request_json")" || deny_tampered "the request file has no app."
@@ -138,14 +112,8 @@ jobs:
           requested_by="$(jq -er '.requested_by // empty' <<< "$request_json")" || deny_tampered "the request file has no requested_by."
           stored_commit="$(jq -er '.commit // empty' <<< "$request_json")" || deny_tampered "the request file has no commit."
 
-          # 3b. Verify the request content and SHA against trusted metadata from
-          # the request workflow. The request workflow wrote this file on a new
-          # branch and recorded the source commit it was asked to release as
-          # `commit`. The commit that wrote the request file must be based on
-          # that source commit, which binds the approved request to the trusted
-          # source commit rather than to mutable commit-author attribution.
-          # Commit author names or email attribution are never used as producer
-          # authentication: they can be forged by anyone who can push.
+          # Rule 9: exactly one commit touches the request file, it is the PR head, and
+          # its parent is the recorded source commit. Author text is never trusted.
           touching_out="$(gh api --method GET --paginate "repos/$REPO/commits" \
             -f path="$request_file" -f sha="$HEAD_SHA" \
             --jq '.[] | .sha')" \
@@ -158,13 +126,8 @@ jobs:
           [[ -n "$parent_sha" ]] || deny_tampered "the commit that wrote the request file has no parent commit."
           [[ "$parent_sha" == "$stored_commit" ]] || deny_tampered "the request commit is not based on the source commit recorded in the request."
 
-          # 3c. Who really asked? Everything above is data that anyone who can
-          #     push to the request branch can rewrite, including a force-push
-          #     that replaces the whole request commit. GitHub's own record of
-          #     the request run cannot be changed by pushing. The request
-          #     workflow puts its run id at the end of the branch name, and
-          #     the pull request's branch name cannot change. Read the
-          #     requester from that run, not from the file.
+          # Rule 10: the requester comes from the request run record (its id ends the
+          # branch name), not from the file, which anyone with push access can rewrite.
           run_id="${HEAD_REF##*-}"
           [[ "$run_id" =~ ^[0-9]+$ ]] || deny_tampered "the request branch name does not end in a request run id."
           run_json="$(gh api "repos/$REPO/actions/runs/$run_id")" \
@@ -181,9 +144,7 @@ jobs:
             || deny_tampered "the request file names @$requested_by, but @$run_actor started the request run. The request file was replaced."
           requested_by="$run_actor"
 
-          # 3d. The approved commit may change the request file and nothing
-          #     else. Publish builds exactly this commit, so an extra changed
-          #     file would be an extra thing that gets released.
+          # Rule 11: the approved commit changes the request file and nothing else.
           changed_out="$(gh api "repos/$REPO/commits/$HEAD_SHA" \
             --jq '.files[] | .filename, (.previous_filename // empty)')" \
             || deny "the request commit's changed files could not be read."
@@ -191,17 +152,16 @@ jobs:
           [[ "${#changed[@]}" -eq 1 && "${changed[0]}" == "$request_file" ]] \
             || deny_tampered "the request commit changes files other than $request_file."
 
-          # 4. App and track must be on the fixed lists, read from the
-          #    default branch and not from the request branch.
+          # Rule 12: app and track are on the lists, read from the default branch.
           config_json="$(gh api "repos/$REPO/contents/release.config.json?ref=$DEFAULT_BRANCH" --jq '.content' | base64 --decode)" \
             || deny "release.config.json could not be read from $DEFAULT_BRANCH."
           jq -e --arg v "$app" '.apps | index($v)' <<< "$config_json" > /dev/null || deny "the requested app is not in release.config.json."
           jq -e --arg v "$track" '.tracks | index($v)' <<< "$config_json" > /dev/null || deny "the requested track is not in release.config.json."
 
-          # 5. Nobody approves their own request.
+          # Rule 16: nobody approves their own request.
           [[ "$(lower "$requested_by")" != "$approver" ]] || deny "@$APPROVER requested this release, so their own approval does not count. A different authorised approver is needed."
 
-          # 6. Verify the review approved the PR's head commit, not an older commit.
+          # Rule 13: the review is for the exact head commit and carries its id.
           review_commit="${{ github.event.review.commit_id }}"
           [[ -n "$review_commit" && "$review_commit" == "$HEAD_SHA" ]] || deny "the review was not submitted for the PR head $HEAD_SHA (it was for '${review_commit:-no commit}'). Review the current head."
 
@@ -214,9 +174,8 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "Approval by @$APPROVER accepted for $app -> $track (requested by @$requested_by)."
 
-  # Close a request the gate found to be tampered with, and delete its
-  # branch. Kept as its own job so that the check job above never needs
-  # write access to repository contents; only this job can delete a branch.
+  # Closes a tampered request and deletes its branch. A separate job so the
+  # check job stays read-only on contents (SPEC.md, rules for failure).
   quarantine:
     name: Close a tampered request
     needs: verify
@@ -234,26 +193,20 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
         run: |
-          # Close and delete are separate steps, each safe to repeat: an
-          # already-closed request or an already-deleted branch counts as done.
+          # Close and delete are separate and repeatable: already done counts as done.
           pr_state="$(gh pr view "$PR_NUMBER" --repo "$REPO" --json state --jq .state)"
           if [[ "$pr_state" == "OPEN" ]]; then gh pr close "$PR_NUMBER" --repo "$REPO"; fi
           if gh api "repos/$REPO/git/ref/heads/$HEAD_REF" > /dev/null 2>&1; then
             gh api --method DELETE "repos/$REPO/git/refs/heads/$HEAD_REF"
           fi
-          # Fail on purpose so the run is red: a refusal that means the
-          # request was tampered with should not look like a normal green run.
-          # Refusals about people (wrong approver, self-approval) stay green.
+          # Fail on purpose so a tampered request shows as a red run.
           echo "::error::Request #$PR_NUMBER was refused as tampered with and has been closed. See the comment on the pull request."
           exit 1
 
-  # The one call site of the publish workflow.
-  #
-  # It is named by repository and branch, not by a relative path. A
-  # review-triggered run resolves a relative path against the pull request,
-  # so naming the default branch makes sure the publish steps that run are
-  # the reviewed ones on that branch. AFTER USING THIS TEMPLATE, change the
-  # owner and repository below to your own.
+  # The one call site of the publish workflow. Named by repository and branch,
+  # not by a relative path: a review-triggered run resolves a relative path
+  # against the pull request. AFTER USING THIS TEMPLATE, change the owner and
+  # repository below to your own.
   publish:
     name: Publish the approved release
     needs: verify
@@ -296,10 +249,8 @@ jobs:
             gh pr comment "$PR_NUMBER" --repo "$REPO" --body "Approved by @$APPROVER. Publish completed."
             gh pr close "$PR_NUMBER" --repo "$REPO" --delete-branch
           else
-            # The approval was valid; the failure is usually infrastructure.
-            # Keep the request so it can be retried without a new approval.
-            # A re-run replays the same approval on the same commit, so it
-            # can only publish what was already approved.
+            # The approval was valid and the failure is usually infrastructure: keep the
+            # request open so a re-run can retry the same approval (SPEC.md).
             gh pr comment "$PR_NUMBER" --repo "$REPO" --body "Approved by @$APPROVER, but the publish did not succeed (result: \`$RESULT\`). Nothing was published. This request is left open on purpose. Fix the cause, then re-run the failed jobs here: $RUN_URL"
             echo "::notice::Publish result was $RESULT. Request #$PR_NUMBER left open for retry."
           fi
