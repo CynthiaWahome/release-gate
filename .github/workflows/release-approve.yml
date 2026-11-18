@@ -16,6 +16,12 @@ env:
   # change to this file. Replace with your own logins (space separated).
   ALLOWED_APPROVERS: "CynthiaWahome wamzii"
 
+# One approval run at a time per pull request. A second approval waits for the
+# first run (including its close step) to finish, then sees a closed request.
+concurrency:
+  group: release-approve-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
 jobs:
   verify:
     name: Verify the approval
@@ -84,6 +90,10 @@ jobs:
           # output is never set to true, so the publish job is skipped.
 
           lower() { tr '[:upper:]' '[:lower:]' <<< "$1"; }
+          # Non-empty lines of a string, one per line. Used after each API
+          # read has been checked on its own, so a failed read can never look
+          # like an empty list.
+          lines() { grep . <<< "$1" || true; }
           approver="$(lower "$APPROVER")"
 
           # 1. The approver must be on the list. Logins are compared without
@@ -113,8 +123,10 @@ jobs:
 
           # 2. Exactly one request file. Found by its path, across every page
           #    of the changed-files list, never by "the first changed file".
-          mapfile -t files < <(gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/files" \
-            --jq '.[] | select(.filename | startswith("release-requests/")) | select(.filename | endswith(".json")) | .filename')
+          files_out="$(gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/files" \
+            --jq '.[] | select(.filename | startswith("release-requests/")) | select(.filename | endswith(".json")) | .filename')" \
+            || deny "the pull request's changed files could not be read."
+          mapfile -t files < <(lines "$files_out")
           [[ "${#files[@]}" -eq 1 ]] || deny_tampered "expected exactly one request file under release-requests/, found ${#files[@]}."
           request_file="${files[0]}"
 
@@ -134,9 +146,11 @@ jobs:
           # source commit rather than to mutable commit-author attribution.
           # Commit author names or email attribution are never used as producer
           # authentication: they can be forged by anyone who can push.
-          mapfile -t touching < <(gh api --method GET --paginate "repos/$REPO/commits" \
+          touching_out="$(gh api --method GET --paginate "repos/$REPO/commits" \
             -f path="$request_file" -f sha="$HEAD_SHA" \
-            --jq '.[] | .sha')
+            --jq '.[] | .sha')" \
+            || deny "the request file's history could not be read."
+          mapfile -t touching < <(lines "$touching_out")
           [[ "${#touching[@]}" -eq 1 ]] || deny_tampered "expected exactly one commit to touch $request_file, found ${#touching[@]}."
           touching_sha="${touching[0]}"
           [[ "$touching_sha" == "$HEAD_SHA" ]] || deny_tampered "the request file was modified after the PR was opened."
@@ -170,7 +184,10 @@ jobs:
           # 3d. The approved commit may change the request file and nothing
           #     else. Publish builds exactly this commit, so an extra changed
           #     file would be an extra thing that gets released.
-          mapfile -t changed < <(gh api "repos/$REPO/commits/$HEAD_SHA" --jq '.files[].filename')
+          changed_out="$(gh api "repos/$REPO/commits/$HEAD_SHA" \
+            --jq '.files[] | .filename, (.previous_filename // empty)')" \
+            || deny "the request commit's changed files could not be read."
+          mapfile -t changed < <(lines "$changed_out")
           [[ "${#changed[@]}" -eq 1 && "${changed[0]}" == "$request_file" ]] \
             || deny_tampered "the request commit changes files other than $request_file."
 
@@ -186,7 +203,7 @@ jobs:
 
           # 6. Verify the review approved the PR's head commit, not an older commit.
           review_commit="${{ github.event.review.commit_id }}"
-          [[ -z "$review_commit" || "$review_commit" == "$HEAD_SHA" ]] || deny "the review was submitted for commit $review_commit, but the PR head is $HEAD_SHA (stale review)."
+          [[ -n "$review_commit" && "$review_commit" == "$HEAD_SHA" ]] || deny "the review was not submitted for the PR head $HEAD_SHA (it was for '${review_commit:-no commit}'). Review the current head."
 
           {
             echo "approved=true"
@@ -215,8 +232,15 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
         run: |
-          gh pr close "$PR_NUMBER" --repo "$REPO" --delete-branch
+          # Close and delete are separate steps, each safe to repeat: an
+          # already-closed request or an already-deleted branch counts as done.
+          pr_state="$(gh pr view "$PR_NUMBER" --repo "$REPO" --json state --jq .state)"
+          if [[ "$pr_state" == "OPEN" ]]; then gh pr close "$PR_NUMBER" --repo "$REPO"; fi
+          if gh api "repos/$REPO/git/ref/heads/$HEAD_REF" > /dev/null 2>&1; then
+            gh api --method DELETE "repos/$REPO/git/refs/heads/$HEAD_REF"
+          fi
           # Fail on purpose so the run is red: a refusal that means the
           # request was tampered with should not look like a normal green run.
           # Refusals about people (wrong approver, self-approval) stay green.

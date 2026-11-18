@@ -63,21 +63,29 @@ jobs:
           # the guard step below refuses if the PR has moved.
           ref: ${{ inputs.head_sha }}
 
-      # Guard: dismiss stale approvals. If the PR head SHA has moved since
-      # approval (someone pushed to the request branch), refuse to publish.
-      - name: Verify PR head SHA is unchanged since approval
+      # Guard: dismiss stale approvals. A failed-jobs rerun skips the approval
+      # check and reuses its result, so everything that makes a request
+      # single-use is checked again here: the head has not moved, the request
+      # is still open, and its history shows no force-push, restore or reopen.
+      - name: Verify the request is unchanged and still open
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           APPROVED_HEAD_SHA: ${{ inputs.head_sha }}
         run: |
-          current_head="$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '.head.sha')"
-          [[ "$current_head" == "$APPROVED_HEAD_SHA" ]] || {
-            echo "::error::PR head SHA changed since approval (approved at $APPROVED_HEAD_SHA, now $current_head). Publish blocked."
-            exit 1
-          }
-          echo "PR head SHA unchanged ($APPROVED_HEAD_SHA). Safe to publish."
+          block() { echo "::error::$1 Publish blocked."; exit 1; }
+          pr_json="$(gh api "repos/$REPO/pulls/$PR_NUMBER")" || block "The pull request could not be read."
+          current_head="$(jq -r '.head.sha' <<< "$pr_json")"
+          pr_state="$(jq -r '.state' <<< "$pr_json")"
+          [[ "$current_head" == "$APPROVED_HEAD_SHA" ]] \
+            || block "PR head SHA changed since approval (approved at $APPROVED_HEAD_SHA, now $current_head)."
+          [[ "$pr_state" == "open" ]] || block "The request is $pr_state, not open."
+          events="$(gh api --paginate "repos/$REPO/issues/$PR_NUMBER/events" --jq '.[].event')" \
+            || block "The pull request history could not be read."
+          bad="$(grep -E '^(head_ref_force_pushed|head_ref_restored|reopened)$' <<< "$events" | sort -u | paste -sd, - || true)"
+          [[ -z "$bad" ]] || block "The request history shows: $bad."
+          echo "Request unchanged, open and clean ($APPROVED_HEAD_SHA). Safe to publish."
 
       - name: Setup Node.js
         uses: actions/setup-node@v5
