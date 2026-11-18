@@ -1,52 +1,106 @@
 #!/usr/bin/env ruby
 # Static checks on every workflow file. Needs no accounts or secrets.
 #
-# 1. A YAML mapping must not repeat a key. GitHub rejects such a file and
-#    stops listing the workflow by name. Ruby's loader silently keeps the
-#    last copy, so this walks the parse tree instead.
-# 2. Every `run:` script must pass `bash -n` (a syntax check; nothing runs).
-#    Expressions like ${{ ... }} are replaced with a placeholder first.
+# 1. No YAML mapping may repeat a key. GitHub rejects such a file. Ruby's
+#    loader silently keeps the last copy, so this walks the parse tree.
+# 2. Every bash or sh `run:` step must pass a syntax check (nothing runs).
+#    Steps using another shell (python, pwsh, ...) are skipped.
 require "yaml"
 require "open3"
 
-failures = 0
-files = ARGV.empty? ? Dir[".github/workflows/*.{yml,yaml}"].sort : ARGV
-
-files.each do |file|
-  begin
-    stream = Psych.parse_stream(File.read(file))
-  rescue Psych::SyntaxError => e
-    puts "#{file}: YAML does not parse: #{e.message}"
-    failures += 1
-    next
+# Replace each ${{ ... }} expression with X. A "}}" inside a single-quoted
+# expression string does not end the expression; '' is an escaped quote.
+def strip_expressions(text)
+  out = +""
+  i = 0
+  while i < text.length
+    if text[i, 3] == "${{"
+      j = i + 3
+      quoted = false
+      while j < text.length
+        if text[j] == "'"
+          if quoted && text[j + 1] == "'"
+            j += 1
+          else
+            quoted = !quoted
+          end
+        elsif !quoted && text[j, 2] == "}}"
+          break
+        end
+        j += 1
+      end
+      out << "X"
+      i = j + 2
+    else
+      out << text[i]
+      i += 1
+    end
   end
+  out
+end
 
+# "bash" or "sh" if the step's shell can be syntax-checked, else nil.
+def checkable_shell(step, job, workflow)
+  shell = step["shell"] || job.dig("defaults", "run", "shell") || workflow.dig("defaults", "run", "shell") || "bash"
+  return nil unless shell.is_a?(String)
+  case shell.split.first
+  when "bash" then "bash"
+  when "sh" then "sh"
+  end
+end
+
+def repeated_keys(file, stream)
+  problems = []
   walk = lambda do |node|
     if node.is_a?(Psych::Nodes::Mapping)
-      node.children.each_slice(2).to_a.then do |pairs|
-        keys = pairs.map { |k, _| k.is_a?(Psych::Nodes::Scalar) ? k.value : nil }.compact
-        keys.group_by(&:itself).select { |_, v| v.size > 1 }.each_key do |key|
-          puts "#{file}:#{node.start_line + 1}: repeated key '#{key}'"
-          failures += 1
-        end
-        pairs.each do |k, v|
-          next unless k.is_a?(Psych::Nodes::Scalar) && k.value == "run" && v.is_a?(Psych::Nodes::Scalar)
-          script = v.value.gsub(/\$\{\{.*?\}\}/m, "X")
-          _out, err, status = Open3.capture3("bash", "-n", stdin_data: script)
-          next if status.success?
-          puts "#{file}:#{v.start_line + 1}: run script has a syntax error: #{err.strip}"
-          failures += 1
-        end
+      keys = node.children.each_slice(2).map { |k, _| k.is_a?(Psych::Nodes::Scalar) ? k.value : nil }.compact
+      keys.group_by(&:itself).select { |_, v| v.size > 1 }.each_key do |key|
+        problems << "#{file}:#{node.start_line + 1}: repeated key '#{key}'"
       end
     end
     (node.children || []).each { |child| walk.call(child) }
   end
   walk.call(stream)
+  problems
 end
 
-if failures.zero?
+def script_errors(file, workflow)
+  problems = []
+  (workflow["jobs"] || {}).each do |job_id, job|
+    next unless job.is_a?(Hash)
+    (job["steps"] || []).each_with_index do |step, index|
+      next unless step.is_a?(Hash) && step["run"].is_a?(String)
+      shell = checkable_shell(step, job, workflow)
+      next unless shell
+      _out, err, status = Open3.capture3(shell, "-n", stdin_data: strip_expressions(step["run"]))
+      next if status.success?
+      label = step["name"] || "step #{index + 1}"
+      problems << "#{file}: job '#{job_id}', #{label}: run script has a syntax error: #{err.strip}"
+    end
+  end
+  problems
+end
+
+problems = []
+files = ARGV.empty? ? Dir[".github/workflows/*.{yml,yaml}"].sort : ARGV
+
+files.each do |file|
+  text = File.read(file)
+  begin
+    stream = Psych.parse_stream(text)
+    workflow = YAML.safe_load(text, aliases: true) || {}
+  rescue Psych::Exception => e
+    problems << "#{file}: YAML does not parse: #{e.message}"
+    next
+  end
+  problems.concat(repeated_keys(file, stream))
+  problems.concat(script_errors(file, workflow)) if workflow.is_a?(Hash)
+end
+
+if problems.empty?
   puts "Workflow checks passed for #{files.size} files."
 else
-  puts "#{failures} problem(s) found."
+  puts problems
+  puts "#{problems.size} problem(s) found."
   exit 1
 end
