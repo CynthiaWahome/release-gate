@@ -38,8 +38,10 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
+      actions: read # read the request run record (check 3c)
     outputs:
       approved: ${{ steps.check.outputs.approved }}
+      tampered: ${{ steps.check.outputs.tampered }}
       app: ${{ steps.check.outputs.app }}
       track: ${{ steps.check.outputs.track }}
       requested_by: ${{ steps.check.outputs.requested_by }}
@@ -53,6 +55,7 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           APPROVER: ${{ github.event.review.user.login }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
@@ -62,6 +65,19 @@ jobs:
             echo "::error::$1"
             gh pr comment "$PR_NUMBER" --repo "$REPO" --body "Release not started: $1" || true
             echo "approved=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          }
+          # Record a refusal that means the request itself cannot be trusted
+          # (it was edited, replaced or malformed). The request is dead: the
+          # separate "quarantine" job below closes it and deletes its branch,
+          # so a poisoned request cannot be approved later. Refusals about
+          # people (wrong approver, self-approval) do not use this one: the
+          # request is fine and another approver can still approve it.
+          deny_tampered() {
+            echo "::error::$1"
+            gh pr comment "$PR_NUMBER" --repo "$REPO" --body "Release not started: $1 This request cannot be trusted, so it is being closed. Start a new release request." || true
+            echo "approved=false" >> "$GITHUB_OUTPUT"
+            echo "tampered=true" >> "$GITHUB_OUTPUT"
             exit 0
           }
           # If anything below fails unexpectedly, the step fails and the
@@ -78,20 +94,37 @@ jobs:
           done
           [[ "$allowed" == "true" ]] || deny "@$APPROVER is not an authorised release approver. This request still needs an authorised approval."
 
+          # 1b. A request is single-use. It must still be open, and GitHub's
+          #     own event log for the pull request must show none of the things
+          #     a legitimate request never goes through: a force-push over the
+          #     branch, a deleted branch that was restored, or a pull request
+          #     that was reopened. Nobody can edit that log by pushing, and it
+          #     works on repositories that cannot use branch rulesets. If the
+          #     log cannot be read, the answer is no.
+          pr_state="$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '.state')" \
+            || deny "the pull request state could not be read."
+          [[ "$pr_state" == "open" ]] \
+            || deny "this request is $pr_state. A closed request cannot be approved; start a new release request."
+          events="$(gh api --paginate "repos/$REPO/issues/$PR_NUMBER/events" --jq '.[].event')" \
+            || deny "the pull request history could not be read."
+          bad_events="$(grep -E '^(head_ref_force_pushed|head_ref_restored|reopened)$' <<< "$events" | sort -u | paste -sd, - || true)"
+          [[ -z "$bad_events" ]] \
+            || deny_tampered "the request history shows: $bad_events. A legitimate request is never force-pushed, restored or reopened."
+
           # 2. Exactly one request file. Found by its path, across every page
           #    of the changed-files list, never by "the first changed file".
           mapfile -t files < <(gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/files" \
             --jq '.[] | select(.filename | startswith("release-requests/")) | select(.filename | endswith(".json")) | .filename')
-          [[ "${#files[@]}" -eq 1 ]] || deny "expected exactly one request file under release-requests/, found ${#files[@]}."
+          [[ "${#files[@]}" -eq 1 ]] || deny_tampered "expected exactly one request file under release-requests/, found ${#files[@]}."
           request_file="${files[0]}"
 
           # 3. Read the request exactly as it is at the approved commit.
           request_json="$(gh api "repos/$REPO/contents/$request_file?ref=$HEAD_SHA" --jq '.content' | base64 --decode)" \
             || deny "the request file could not be read."
-          app="$(jq -er '.app // empty' <<< "$request_json")" || deny "the request file has no app."
-          track="$(jq -er '.track // empty' <<< "$request_json")" || deny "the request file has no track."
-          requested_by="$(jq -er '.requested_by // empty' <<< "$request_json")" || deny "the request file has no requested_by."
-          stored_commit="$(jq -er '.commit // empty' <<< "$request_json")" || deny "the request file has no commit."
+          app="$(jq -er '.app // empty' <<< "$request_json")" || deny_tampered "the request file has no app."
+          track="$(jq -er '.track // empty' <<< "$request_json")" || deny_tampered "the request file has no track."
+          requested_by="$(jq -er '.requested_by // empty' <<< "$request_json")" || deny_tampered "the request file has no requested_by."
+          stored_commit="$(jq -er '.commit // empty' <<< "$request_json")" || deny_tampered "the request file has no commit."
 
           # 3b. Verify the request content and SHA against trusted metadata from
           # the request workflow. The request workflow wrote this file on a new
@@ -104,12 +137,42 @@ jobs:
           mapfile -t touching < <(gh api --method GET --paginate "repos/$REPO/commits" \
             -f path="$request_file" -f sha="$HEAD_SHA" \
             --jq '.[] | .sha')
-          [[ "${#touching[@]}" -eq 1 ]] || deny "expected exactly one commit to touch $request_file, found ${#touching[@]}."
+          [[ "${#touching[@]}" -eq 1 ]] || deny_tampered "expected exactly one commit to touch $request_file, found ${#touching[@]}."
           touching_sha="${touching[0]}"
-          [[ "$touching_sha" == "$HEAD_SHA" ]] || deny "the request file was modified after the PR was opened."
+          [[ "$touching_sha" == "$HEAD_SHA" ]] || deny_tampered "the request file was modified after the PR was opened."
           parent_sha="$(gh api "repos/$REPO/commits/$HEAD_SHA" --jq '.parents[0].sha // empty')"
-          [[ -n "$parent_sha" ]] || deny "the commit that wrote the request file has no parent commit."
-          [[ "$parent_sha" == "$stored_commit" ]] || deny "the request commit is not based on the source commit recorded in the request."
+          [[ -n "$parent_sha" ]] || deny_tampered "the commit that wrote the request file has no parent commit."
+          [[ "$parent_sha" == "$stored_commit" ]] || deny_tampered "the request commit is not based on the source commit recorded in the request."
+
+          # 3c. Who really asked? Everything above is data that anyone who can
+          #     push to the request branch can rewrite, including a force-push
+          #     that replaces the whole request commit. GitHub's own record of
+          #     the request run cannot be changed by pushing. The request
+          #     workflow puts its run id at the end of the branch name, and
+          #     the pull request's branch name cannot change. Read the
+          #     requester from that run, not from the file.
+          run_id="${HEAD_REF##*-}"
+          [[ "$run_id" =~ ^[0-9]+$ ]] || deny_tampered "the request branch name does not end in a request run id."
+          run_json="$(gh api "repos/$REPO/actions/runs/$run_id")" \
+            || deny "the request run $run_id could not be read."
+          jq -e --arg branch "$DEFAULT_BRANCH" --arg sha "$stored_commit" '
+              .event == "workflow_dispatch"
+              and .path == ".github/workflows/release-request.yml"
+              and .head_branch == $branch
+              and .head_sha == $sha' <<< "$run_json" > /dev/null \
+            || deny_tampered "request run $run_id was not a manual run of the request workflow on $DEFAULT_BRANCH at the recorded source commit."
+          run_actor="$(jq -er '.actor.login // empty' <<< "$run_json")" \
+            || deny_tampered "the request run $run_id has no recorded actor."
+          [[ "$(lower "$run_actor")" == "$(lower "$requested_by")" ]] \
+            || deny_tampered "the request file names @$requested_by, but @$run_actor started the request run. The request file was replaced."
+          requested_by="$run_actor"
+
+          # 3d. The approved commit may change the request file and nothing
+          #     else. Publish builds exactly this commit, so an extra changed
+          #     file would be an extra thing that gets released.
+          mapfile -t changed < <(gh api "repos/$REPO/commits/$HEAD_SHA" --jq '.files[].filename')
+          [[ "${#changed[@]}" -eq 1 && "${changed[0]}" == "$request_file" ]] \
+            || deny_tampered "the request commit changes files other than $request_file."
 
           # 4. App and track must be on the fixed lists, read from the
           #    default branch and not from the request branch.
@@ -133,6 +196,32 @@ jobs:
             echo "head_sha=$HEAD_SHA"
           } >> "$GITHUB_OUTPUT"
           echo "Approval by @$APPROVER accepted for $app -> $track (requested by @$requested_by)."
+
+  # Close a request the gate found to be tampered with, and delete its
+  # branch. Kept as its own job so that the check job above never needs
+  # write access to repository contents; only this job can delete a branch.
+  quarantine:
+    name: Close a tampered request
+    needs: verify
+    if: needs.verify.outputs.tampered == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write
+      contents: write # delete the request branch
+    steps:
+      - name: Close the pull request and delete its branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          gh pr close "$PR_NUMBER" --repo "$REPO" --delete-branch
+          # Fail on purpose so the run is red: a refusal that means the
+          # request was tampered with should not look like a normal green run.
+          # Refusals about people (wrong approver, self-approval) stay green.
+          echo "::error::Request #$PR_NUMBER was refused as tampered with and has been closed. See the comment on the pull request."
+          exit 1
 
   # The one call site of the publish workflow.
   #
