@@ -40,7 +40,7 @@ on:
         type: string
     outputs:
       upload_reached:
-        description: "true once the store upload has started. A failure after this must not be re-run."
+        description: "false until the store upload starts, then true. An empty value means unknown, and unknown must not be re-run."
         value: ${{ jobs.publish.outputs.upload_reached }}
 
 # One publish per app at a time. A second approved request for the same app
@@ -57,10 +57,17 @@ jobs:
   publish:
     name: "Publish ${{ inputs.app }} to ${{ inputs.track }}"
     outputs:
-      upload_reached: ${{ steps.upload_marker.outputs.upload_reached }}
+      upload_reached: ${{ steps.upload_marker.outputs.upload_reached || steps.upload_pending.outputs.upload_reached }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
+      # First step, so it is delivered even if a later step fails. Retrying a
+      # failed publish needs this explicit "false": if the runner is lost, the
+      # output is missing, and a missing value is treated as unknown.
+      - name: Record that the upload has not started
+        id: upload_pending
+        run: echo "upload_reached=false" >> "$GITHUB_OUTPUT"
+
       - name: Checkout the approved commit
         uses: actions/checkout@v5
         with:

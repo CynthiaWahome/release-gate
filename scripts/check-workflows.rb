@@ -43,7 +43,9 @@ end
 # "bash" or "sh" if the step uses exactly that shell, else nil. Custom templates
 # such as "bash -O extglob {0}" change how the script parses, so they are skipped.
 def checkable_shell(step, job, workflow)
-  shell = step["shell"] || job.dig("defaults", "run", "shell") || workflow.dig("defaults", "run", "shell") || "bash"
+  shell = step["shell"] || job.dig("defaults", "run", "shell") || workflow.dig("defaults", "run", "shell")
+  # No shell set: bash on Linux and macOS runners, PowerShell on Windows ones.
+  shell ||= job["runs-on"].to_s =~ /windows/i ? "pwsh" : "bash"
   return nil unless shell.is_a?(String)
   %w[bash sh].include?(shell) ? shell : nil
 end
