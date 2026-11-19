@@ -125,7 +125,9 @@ A different authorised person opens the request PR and submits **Review changes 
 > `release-gate` is an isolated holding branch for release requests—not somewhere you merge application changes. This is an approval queue, not a merge queue wearing a different hat.
 
 - **Success:** The workflow closes the request and deletes its branch.
-- **Failure:** The request stays open. Inspect the logs and, for real uploads, the store state before rerunning—a failed job does not guarantee nothing was uploaded.
+- **Failure before the store upload starts** (a full disk, a build error): the request stays open, and re-running the failed jobs is safe.
+- **Failure at or after the store upload, or when it cannot be known:** the request is closed and its branch deleted, so a re-run cannot release twice. Check the store first, then start a new request only if a release is still needed.
+- **Nobody acts on it:** the expiry job closes the request after 7 days.
 - **Changed your mind?** Close an unapproved request without merging it.
 
 ## Workflow reference
@@ -135,6 +137,7 @@ A different authorised person opens the request PR and submits **Review changes 
 | Release 1: Request | [release-request.yml](.github/workflows/release-request.yml) | A manual run |
 | Release 2: Approve and publish | [release-approve.yml](.github/workflows/release-approve.yml) | A submitted PR review |
 | Release 3: Publish | [_publish.yml](.github/workflows/_publish.yml) | A call from the approval workflow |
+| Release 4: Expire stale requests | [release-request-expiry.yml](.github/workflows/release-request-expiry.yml) | A daily schedule, or a manual run (a dry run unless you turn it off) |
 | Merge notice | [release-gate-notice.yml](.github/workflows/release-gate-notice.yml) | A merged request |
 | CI | [ci.yml](.github/workflows/ci.yml) | Configured pushes and PRs |
 | Secret scan | [security.yml](.github/workflows/security.yml) | Configured pushes, PRs, and scheduled runs |
@@ -149,6 +152,8 @@ Use two accounts with permission to submit approving reviews. Put the requester 
 - [ ] The summary identifies the app, track, requester, and approver.
 - [ ] The successful request closes and its branch is deleted.
 - [ ] A separate test request is merged; merging triggers the notice, not publishing.
+- [ ] Run **Release 4: Expire stale requests** by hand with `dry_run` on and check it lists only unapproved bot requests.
+- [ ] Before real uploads: make a test publish fail before the upload step and again after it. The first leaves the request open; the second closes it.
 - [ ] On a disposable branch, adding `workflow_dispatch` to `_publish.yml` makes the publish-trigger guard fail. Discard that test change afterward.
 
 See [Using the gate](#using-the-gate) for the everyday request and approval steps.
@@ -162,9 +167,10 @@ The workflow gate is one layer—not a force field around repository write acces
 | Protect store and signing credentials with a GitHub Environment and suitable access rules | Someone with write access may be able to add another workflow. Plain repository secrets are not isolated to this publishing path |
 | Restrict pushes to `release-request/**` and `release-gate` | Protect request contents and the workflow code used by review-triggered runs; allow the automation the access it needs |
 | Protect the default branch and require code-owner review | The approver list and approval logic live in files that can be changed |
-| Define the exact source revision to build | The request records a commit, but the sample publish workflow does **not** explicitly check out that recorded commit |
-| Make uploads safe to retry | An upload can succeed externally even when a later step fails |
-| Pin third-party actions to full commit SHAs | Version tags are movable references |
+| Define the exact source revision to build | The request records a commit. Publish checks out the approved request commit, which differs from that source commit only by the request file. Confirm that is the revision you want to build |
+| Keep the store upload as the **last** step | A step that fails after a real upload would otherwise look like a failed publish. Publish marks the moment just before the upload, and closes the request if it cannot prove the upload had not started |
+| Make uploads safe to repeat, and check the store before releasing again | If an upload times out after the store accepted it, no workflow can see that. A repeat can release a second, higher version |
+| Pin third-party actions to full commit SHAs | Version tags are movable references. This template pins its own actions, and CI fails if a step uses one that is not pinned. Keep that rule for any action you add |
 
 Check your GitHub plan and test environment branch restrictions with review-triggered runs before relying on them.
 
@@ -188,6 +194,7 @@ npm ci
 npm run lint
 npm run typecheck
 bash scripts/check-publish-trigger.sh
+ruby scripts/check-workflows.rb
 actionlint
 ```
 
@@ -196,6 +203,7 @@ What these actually do:
 - `lint` syntax-checks the sample build script.
 - `typecheck` is currently a placeholder—not a real type check.
 - The trigger guard should print `The publish gate is intact.`
+- `check-workflows.rb` fails on a repeated YAML key or a shell syntax error in a `run:` step, and needs only Ruby.
 - `actionlint` checks the workflows and must be installed separately.
 
 To exercise the sample build:
