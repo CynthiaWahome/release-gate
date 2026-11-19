@@ -46,3 +46,8 @@ jobs:
       # stay a hard failure: never mark it continue-on-error.
       - name: Guard the publish trigger
         run: scripts/check-publish-trigger.sh
+
+      # Catches a repeated YAML key (GitHub rejects the file) and a shell
+      # syntax error in any run step, before a broken workflow can be merged.
+      - name: Check the workflow files
+        run: ruby scripts/check-workflows.rb
