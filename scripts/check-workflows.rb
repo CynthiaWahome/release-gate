@@ -6,6 +6,7 @@
 # 2. Every bash or sh `run:` step must pass a syntax check (nothing runs).
 #    Steps using another shell (python, pwsh, ...) are skipped.
 require "yaml"
+require "date"
 require "open3"
 
 # Replace each ${{ ... }} expression with X. A "}}" inside a single-quoted
@@ -39,14 +40,12 @@ def strip_expressions(text)
   out
 end
 
-# "bash" or "sh" if the step's shell can be syntax-checked, else nil.
+# "bash" or "sh" if the step uses exactly that shell, else nil. Custom templates
+# such as "bash -O extglob {0}" change how the script parses, so they are skipped.
 def checkable_shell(step, job, workflow)
   shell = step["shell"] || job.dig("defaults", "run", "shell") || workflow.dig("defaults", "run", "shell") || "bash"
   return nil unless shell.is_a?(String)
-  case shell.split.first
-  when "bash" then "bash"
-  when "sh" then "sh"
-  end
+  %w[bash sh].include?(shell) ? shell : nil
 end
 
 def repeated_keys(file, stream)
@@ -88,7 +87,7 @@ files.each do |file|
   text = File.read(file)
   begin
     stream = Psych.parse_stream(text)
-    workflow = YAML.safe_load(text, aliases: true) || {}
+    workflow = YAML.safe_load(text, aliases: true, permitted_classes: [Date, Time]) || {}
   rescue Psych::Exception => e
     problems << "#{file}: YAML does not parse: #{e.message}"
     next
