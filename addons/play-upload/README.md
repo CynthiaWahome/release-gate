@@ -54,7 +54,7 @@ This add-on provides the validation/opt-in guard and wiring guidance. The actual
 
 - **Keep the upload the last step.** In this template's `_publish.yml`, the step "Mark that the upload is about to start" sits just before the upload. Put the upload where the **Publish (dry run)** step is, right after that marker, and add nothing after it. If a step failed after a real upload, the job would look failed while the release is already out. The approval gate closes the request in that case, so a re-run cannot release again (see "After Publish finishes" in [SPEC.md](../../SPEC.md)).
 - **`status: completed` releases to the track immediately,** so a repeated upload is a second release. After a late failure, check Play Console before you start a new request.
-- **Anything that must follow the upload** (for example [`build-number-sync`](../build-number-sync/README.md)) should be non-fatal or run as its own job, never a step that can fail the publish job.
+- **Anything that must follow the upload** (for example [`build-number-sync`](../build-number-sync/README.md)) must be non-fatal (`continue-on-error: true`). It must never be able to fail the publish job. A second job in the same workflow is not enough: the approval gate judges the whole publish workflow, so a failing second job would still close the request.
 - **Pin the action to a full commit SHA,** as in the snippet. This template's CI fails on a step that uses a version tag.
 
 ## Safe by default
