@@ -60,7 +60,7 @@ jobs:
             || { echo "::error::Run this workflow from the branch $DEFAULT_BRANCH, not $FULL_REF."; exit 1; }
 
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           fetch-depth: 0
 

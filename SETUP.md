@@ -170,7 +170,7 @@ The workflow gate is one layer—not a force field around repository write acces
 | Define the exact source revision to build | The request records a commit. Publish checks out the approved request commit, which differs from that source commit only by the request file. Confirm that is the revision you want to build |
 | Keep the store upload as the **last** step | A step that fails after a real upload would otherwise look like a failed publish. Publish marks the moment just before the upload, and closes the request if it cannot prove the upload had not started |
 | Make uploads safe to repeat, and check the store before releasing again | If an upload times out after the store accepted it, no workflow can see that. A repeat can release a second, higher version |
-| Pin third-party actions to full commit SHAs | Version tags are movable references |
+| Pin third-party actions to full commit SHAs | Version tags are movable references. This template pins its own actions, and CI fails if a step uses one that is not pinned. Keep that rule for any action you add |
 
 Check your GitHub plan and test environment branch restrictions with review-triggered runs before relying on them.
 

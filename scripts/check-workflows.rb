@@ -5,6 +5,10 @@
 #    loader silently keeps the last copy, so this walks the parse tree.
 # 2. Every bash or sh `run:` step must pass a syntax check (nothing runs).
 #    Steps using another shell (python, pwsh, ...) are skipped.
+# 3. Every action used in a step must be pinned to a full 40-character commit
+#    SHA, because a version tag can be moved. Local actions (./...) and docker://
+#    images are skipped. A job that calls a reusable workflow is not a step and
+#    is not checked here.
 require "yaml"
 require "date"
 require "open3"
@@ -70,6 +74,12 @@ def script_errors(file, workflow)
   (workflow["jobs"] || {}).each do |job_id, job|
     next unless job.is_a?(Hash)
     (job["steps"] || []).each_with_index do |step, index|
+      if step.is_a?(Hash) && step["uses"].is_a?(String)
+        ref = step["uses"]
+        unless ref.start_with?("./", "docker://") || ref =~ /@[0-9a-f]{40}\z/
+          problems << "#{file}: job '#{job_id}', #{step["name"] || "step #{index + 1}"}: '#{ref}' is not pinned to a full commit SHA"
+        end
+      end
       next unless step.is_a?(Hash) && step["run"].is_a?(String)
       shell = checkable_shell(step, job, workflow)
       next unless shell
