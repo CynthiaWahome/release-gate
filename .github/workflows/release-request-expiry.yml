@@ -44,15 +44,16 @@ jobs:
           set -euo pipefail
           [[ "$MAX_AGE_DAYS" =~ ^[0-9]+$ ]] || { echo "::error::max_age_days must be a whole number."; exit 1; }
 
-          # Only open pull requests that the automation opened from a request branch.
-          open_prs="$(gh pr list --repo "$REPO" --state open --limit 200 --json number,headRefName,createdAt,author)" \
+          # Every open pull request (all pages, oldest included), then only those the
+          # release automation opened from a request branch.
+          open_prs="$(gh api --paginate "repos/$REPO/pulls?state=open&per_page=100" \
+            --jq '.[] | {number, ref: .head.ref, created_at, login: .user.login}')" \
             || { echo "::error::The open pull requests could not be read."; exit 1; }
           stale="$(jq -r --argjson days "$MAX_AGE_DAYS" '
-            .[]
-            | select(.author.is_bot == true)
-            | select(.headRefName | startswith("release-request/"))
-            | select((now - (.createdAt | fromdateiso8601)) > ($days * 86400))
-            | "\(.number)\t\(.headRefName)"' <<< "$open_prs")"
+            select(.login == "github-actions[bot]")
+            | select(.ref | startswith("release-request/"))
+            | select((now - (.created_at | fromdateiso8601)) > ($days * 86400))
+            | "\(.number)\t\(.ref)"' <<< "$open_prs")"
 
           closed=0
           while IFS=$'\t' read -r number ref; do

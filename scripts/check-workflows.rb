@@ -40,12 +40,19 @@ def strip_expressions(text)
   out
 end
 
+# True only when every runner label is a GitHub-hosted Linux or macOS image.
+def unix_hosted?(runs_on)
+  labels = runs_on.is_a?(Hash) ? Array(runs_on["labels"]) : Array(runs_on)
+  !labels.empty? && labels.all? { |l| l.to_s =~ /\A(ubuntu|macos)-(latest|\d[\w.-]*)\z/i }
+end
+
 # "bash" or "sh" if the step uses exactly that shell, else nil. Custom templates
 # such as "bash -O extglob {0}" change how the script parses, so they are skipped.
 def checkable_shell(step, job, workflow)
   shell = step["shell"] || job.dig("defaults", "run", "shell") || workflow.dig("defaults", "run", "shell")
-  # No shell set: bash on Linux and macOS runners, PowerShell on Windows ones.
-  shell ||= job["runs-on"].to_s =~ /windows/i ? "pwsh" : "bash"
+  # No shell set: bash on GitHub-hosted Linux and macOS runners. Windows and
+  # unknown or custom runner labels are skipped, because the default is not known.
+  shell ||= unix_hosted?(job["runs-on"]) ? "bash" : nil
   return nil unless shell.is_a?(String)
   %w[bash sh].include?(shell) ? shell : nil
 end

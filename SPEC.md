@@ -60,7 +60,7 @@ When every check passes, Approve calls Publish with the app, the track, the requ
 
 After Publish finishes:
 
-- **Success:** comment, close the request pull request, delete its branch.
+- **Success:** comment (best effort, so a failed comment never stops the next step), close the request pull request, delete its branch.
 - **Failure when it is known that the store upload had not started** (a full disk, a build error, a refused guard): comment, and leave the pull request open with its branch. The approval was valid and nothing reached the store, so re-running the failed run (same approval, same commit) is allowed and needs no new approval. This holds only while the request is still open and unchanged. If it was closed or changed, the publish guard refuses it for good and a new request is needed.
 - **Failure at or after the store upload, or when that cannot be known:** comment, close the request pull request and delete its branch. The store may already have the release, and a re-run could release again (for example by building a higher version code). The comment says to check the store first and to start a new request only if a release is still needed.
 
@@ -80,7 +80,7 @@ How Publish tells the cases apart: its first step sets an output, `upload_reache
 - **Approver list lives in the workflow file.** It is not read from `CODEOWNERS` at run time, so changing who may approve is always a visible change to a workflow.
 - **Inputs are data, not code.** Values typed by a person are passed to scripts as environment variables and never pasted into script text.
 - **One approval run at a time per pull request.** A second approval waits for the first run, including its close step, and then finds a closed request. Two quick approvals publish once. Every waiting run is kept (`queue: max`), so a later comment review cannot replace a waiting approval.
-- **Stale requests expire.** A daily workflow (`release-request-expiry.yml`) closes open request pull requests that the automation opened and that are older than 7 days, and deletes their branches, so unactioned requests do not pile up or stay approvable. It never touches pull requests opened by people or branches outside `release-request/`. A manual run defaults to a dry run that only lists what it would close.
+- **Stale requests expire.** A daily workflow (`release-request-expiry.yml`) closes open request pull requests that are older than 7 days and deletes their branches, so unactioned requests do not pile up or stay approvable. It reads every page of open pull requests, and only those opened by `github-actions[bot]` from a `release-request/` branch are considered. It never touches pull requests opened by people or by other bots. A manual run defaults to a dry run that only lists what it would close.
 - **Workflow check.** CI fails on a repeated YAML key or a shell syntax error in any `run:` step (`scripts/check-workflows.rb`).
 - **Permissions.** The Approve check job needs `actions: read` to read the request run record. Without it, GitHub answers with HTTP 403 and every honest approval is refused.
 - **Merge notice.** If someone merges a request pull request, a comment explains that merging publishes nothing and that the request needs an approval instead.
@@ -105,3 +105,4 @@ These are not solved by the workflows alone. The README explains the settings th
 3. **The Approve workflow runs from the pull request's merge ref.** GitHub's documentation says review-triggered runs use the pull request's merge commit, so the same ruleset in point 2 also protects the Approve workflow itself from being edited on a request branch.
 4. **The approver list is only as safe as the workflow file.** Require a code-owner review for changes under `.github/workflows/`.
 5. **The event log is read at approval time.** An event written a moment after the check starts reading would be missed. In scratch tests, four back-to-back force-push-then-approve attempts were all refused, which is a small sample and not a guarantee.
+6. **There is no durable single-use marker yet.** After a successful upload the request is closed by a later step. The per-request queue and best-effort comments make a second release unlikely, but if that step fails the request can stay open and approvable. A full fix writes a marker before the upload, from a job with write access and no secrets, and checks it on every approval.
