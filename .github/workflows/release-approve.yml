@@ -255,7 +255,8 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           if [[ "$RESULT" == "success" ]]; then
-            gh pr comment "$PR_NUMBER" --repo "$REPO" --body "Approved by @$APPROVER. Publish completed."
+            # The comment is best effort: a failed comment must never stop the close.
+            gh pr comment "$PR_NUMBER" --repo "$REPO" --body "Approved by @$APPROVER. Publish completed." || true
             gh pr close "$PR_NUMBER" --repo "$REPO" --delete-branch
           elif [[ "$UPLOAD_REACHED" != "false" ]]; then
             # "true" means the upload began; empty means we cannot tell (for example a
