@@ -39,6 +39,7 @@ Each add-on has an `addon.json` describing what it does to a repository. Humans 
 | `tested` | `none`, `fake` (against a stand-in service) or `live` (against the real one) |
 | `requires.variables` | Repository variables it reads, with what each one does |
 | `requires.secrets` | Secret names it reads, by name only, never values |
+| `requires.packages` | npm packages it needs, with a version range |
 | `requires.addons` | Other add-ons it depends on |
 | `copies` | Files copied as they are, as `{ "from": "files/...", "to": "..." }` |
 | `patches` | Edits to files the core already has, as `{ "file": "...", "change": "..." }` |
@@ -49,16 +50,20 @@ Prefer `copies` over `patches`. A patch means editing a file you may have custom
 
 | Add-on | What it adds | Status |
 |---|---|---|
-| `runner-fallback` | Pick the runner from a repository variable, falling back to a hosted one | planned |
-| `disk-cleanup` | Free runner disk space before a heavy native build, and fail fast if too little is left | planned |
-| `play-version-code` | Ask Google Play for the highest existing `versionCode` so the next build can use one more | planned |
-| `aab-build` | Build a signed Android App Bundle | planned |
-| `play-upload` | Upload the bundle to Google Play | planned |
+| [`runner-fallback`](runner-fallback/README.md) | Pick the runner from a repository variable, falling back to a hosted one | experimental |
+| [`disk-cleanup`](disk-cleanup/README.md) | Free runner disk space before a heavy native build, and fail fast if too little is left | experimental |
+| [`play-version-code`](play-version-code/README.md) | Ask Google Play for the highest existing `versionCode` so the next build can use one more | experimental |
+| [`aab-build`](aab-build/README.md) | Build a signed Android App Bundle | experimental |
+| [`play-upload`](play-upload/README.md) | Upload the bundle to Google Play | experimental |
 | `build-number-sync` | Report the released version to a backend endpoint, if one is configured | planned |
+
+## Testing
+
+`scripts/test-addons.sh` runs `addons/*/tests/run.sh` for every add-on that has one, and CI runs it on every pull request. Tests use the real scripts against fakes, so they prove the logic, not the real service. Each README says what is still untested.
 
 ## Adding a new add-on
 
 1. Copy `_template/` to `addons/<your-add-on-name>/`.
 2. Fill in `addon.json` and the README. Put the files it copies under `files/`.
-3. Check it against the rules above, and run the checks in [SETUP.md](../SETUP.md#local-checks).
+3. Add tests in `tests/run.sh`, check it against the rules above, and run `scripts/test-addons.sh`. A passing suite should be able to fail: break something on purpose and confirm a test notices.
 4. Open a PR using the repository template, and say how you tested it.

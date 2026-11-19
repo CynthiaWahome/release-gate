@@ -1,0 +1,27 @@
+{
+  "name": "disk-cleanup",
+  "summary": "Free runner disk space before a heavy native build, and fail fast if too little is left.",
+  "status": "experimental",
+  "tested": "fake",
+  "requires": {
+    "variables": {},
+    "secrets": [],
+    "addons": []
+  },
+  "copies": [
+    {
+      "from": "files/scripts/reclaim-runner-disk.sh",
+      "to": "scripts/reclaim-runner-disk.sh"
+    },
+    {
+      "from": "files/scripts/check-free-disk.sh",
+      "to": "scripts/check-free-disk.sh"
+    }
+  ],
+  "patches": [
+    {
+      "file": ".github/workflows/_publish.yml",
+      "change": "Add a step that runs scripts/reclaim-runner-disk.sh and a step that runs scripts/check-free-disk.sh, both before the Build step. See the README for the exact YAML."
+    }
+  ]
+}

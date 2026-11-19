@@ -10,6 +10,7 @@ Describe the behaviour in plain English. Say what it changes about a release and
 
 - **Variables:** list each repository variable it reads and what it does, or "none".
 - **Secrets:** list each secret by name only, or "none". Say which workflow step reads it.
+- **Packages:** list any npm packages it needs, or "none".
 - **Other add-ons:** list any it depends on, or "none".
 
 ## Wire it in
