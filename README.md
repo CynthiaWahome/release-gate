@@ -29,7 +29,7 @@
 
 <br>
 
-A GitHub Actions release-approval template extracted from a working React Native / Expo setup. Someone requests a release, a different authorised person approves it, and only then can the publishing workflow run.
+A GitHub Actions release-approval template, extracted from a working React Native / Expo setup and built to hold up when a token is stolen. Someone requests a release, a different named person approves it, and only then can the publishing workflow run. The checks never trust anything that someone with write access could edit: they read GitHub's own records instead. It was tested by attacking it with two accounts, and every attack that got through was fixed or written down as a known limit.
 
 <br>
 
@@ -51,6 +51,24 @@ A GitHub Actions release-approval template extracted from a working React Native
 - **Tamper-evident requests:** the requester comes from GitHub's own record, and a request that was force-pushed, restored or reopened is refused.
 - **No double release:** a failed publish that may have reached the store closes the request, so a re-run cannot release twice.
 - **Stale requests expire:** a daily job closes requests that nobody acted on.
+
+<br>
+
+---
+
+## Why it is hard to bypass
+
+| If someone... | What stops it |
+|---|---|
+| merges the request pull request | Merging publishes nothing, and a comment explains why |
+| starts the publish workflow directly | It has one trigger, `workflow_call`, and CI fails if another is added |
+| approves their own release | The requester comes from GitHub's record of who started the request, not from a file anyone can edit |
+| rewrites the request: a force-push, an extra file, a restored or reopened pull request | GitHub's own history for the pull request is checked, and the approved commit may change only the request file |
+| re-runs a failed publish after the store upload began | The request is closed, unless the upload is proven not to have started |
+| leaves a request waiting forever | A daily job closes it |
+| swaps in a changed third-party action | Actions are pinned to full commit SHAs, and CI fails if one is not |
+
+What it does not stop is listed honestly in the [known limits](SPEC.md#known-limits).
 
 <br>
 
