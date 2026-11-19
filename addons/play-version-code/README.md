@@ -12,6 +12,8 @@ Because it reads Play's own record instead of a local counter, it stays correct 
 
 **Your build should use that number plus one.**
 
+**A re-run builds a new, higher version.** Because the build adds one to the highest code Play already has, re-running a publish *after* the upload succeeded does not fail as a duplicate. It builds the next version and releases that too. The approval gate closes a request when a publish fails at or after the upload, so a re-run is refused; see "After Publish finishes" in [SPEC.md](../../SPEC.md). If a publish failed late, check Play Console before you start a new request.
+
 It only reads. It opens a temporary edit to read the track list, then deletes it. It changes nothing in Play Console.
 
 STDOUT carries exactly the one number. Diagnostics go to STDERR, including every track the package has and, for the track you name, its releases and country availability. That helps when a workflow publishes to a different track than the one you are looking at in Play Console.
