@@ -48,6 +48,9 @@ A GitHub Actions release-approval template extracted from a working React Native
 - **Two-person rule:** named approvers, and nobody approves their own release.
 - **Locked publishing:** the publish workflow is reachable only through the approval gate.
 - **Trigger guard:** CI fails if a direct publish trigger is ever added.
+- **Tamper-evident requests:** the requester comes from GitHub's own record, and a request that was force-pushed, restored or reopened is refused.
+- **No double release:** a failed publish that may have reached the store closes the request, so a re-run cannot release twice.
+- **Stale requests expire:** a daily job closes requests that nobody acted on.
 
 <br>
 
@@ -64,7 +67,9 @@ flowchart LR
     D -->|Yes| F[Release 3: Publish]
     F --> G{Publish succeeds?}
     G -->|Yes| H[Close PR, delete branch]
-    G -->|No| I[Keep request open]
+    G -->|No| I{Upload proven not started?}
+    I -->|Yes| J[Keep request open, safe to re-run]
+    I -->|No or unknown| K[Close request, check the store]
 ```
 
 <br>
