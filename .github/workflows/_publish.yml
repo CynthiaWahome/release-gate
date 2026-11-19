@@ -38,6 +38,10 @@ on:
         description: "Head SHA at time of approval (must match PR head)"
         required: true
         type: string
+    outputs:
+      upload_reached:
+        description: "true once the store upload has started. A failure after this must not be re-run."
+        value: ${{ jobs.publish.outputs.upload_reached }}
 
 # One publish per app at a time. A second approved request for the same app
 # waits instead of cancelling the first.
@@ -52,6 +56,8 @@ permissions:
 jobs:
   publish:
     name: "Publish ${{ inputs.app }} to ${{ inputs.track }}"
+    outputs:
+      upload_reached: ${{ steps.upload_marker.outputs.upload_reached }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -81,7 +87,7 @@ jobs:
           [[ "$pr_state" == "open" ]] || block "The request is $pr_state, not open."
           events="$(gh api --paginate "repos/$REPO/issues/$PR_NUMBER/events" --jq '.[].event')" \
             || block "The pull request history could not be read."
-          bad="$(grep -E '^(head_ref_force_pushed|head_ref_restored|reopened)$' <<< "$events" | sort -u | paste -sd, - || true)"
+          bad="$(grep -E '^(head_ref_force_pushed|head_ref_restored|reopened|closed)$' <<< "$events" | sort -u | paste -sd, - || true)"
           [[ -z "$bad" ]] || block "The request history shows: $bad."
           echo "Request unchanged, open and clean ($APPROVED_HEAD_SHA). Safe to publish."
 
@@ -112,9 +118,13 @@ jobs:
           APP: ${{ inputs.app }}
         run: npm run build -- "$APP"
 
-      # DRY RUN. Replace this step with your real store upload. This is the
-      # only place in the repository where store or signing credentials
-      # should ever be referenced.
+      - name: Keep the built artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: "${{ inputs.app }}-${{ inputs.track }}-${{ github.sha }}"
+          path: dist/
+          retention-days: 14
+
       # Same guard again: someone may close the request while the build runs.
       - name: Verify again right before publishing
         env:
@@ -132,10 +142,22 @@ jobs:
           [[ "$pr_state" == "open" ]] || block "The request is $pr_state, not open."
           events="$(gh api --paginate "repos/$REPO/issues/$PR_NUMBER/events" --jq '.[].event')" \
             || block "The pull request history could not be read."
-          bad="$(grep -E '^(head_ref_force_pushed|head_ref_restored|reopened)$' <<< "$events" | sort -u | paste -sd, - || true)"
+          bad="$(grep -E '^(head_ref_force_pushed|head_ref_restored|reopened|closed)$' <<< "$events" | sort -u | paste -sd, - || true)"
           [[ -z "$bad" ]] || block "The request history shows: $bad."
           echo "Request unchanged, open and clean ($APPROVED_HEAD_SHA). Safe to publish."
 
+      # Set just before the upload. If the job fails from here on, the store may
+      # have received the release, so the approval workflow closes the request
+      # instead of leaving it open for a re-run (SPEC.md, After Publish).
+      - name: Mark that the upload is about to start
+        id: upload_marker
+        run: echo "upload_reached=true" >> "$GITHUB_OUTPUT"
+
+      # DRY RUN. Replace this step with your real store upload. This is the
+      # only place in the repository where store or signing credentials
+      # should ever be referenced.
+      # KEEP THIS THE LAST STEP. If a step after a real upload fails, the request
+      # stays open and a re-run would upload again (SPEC.md, After Publish).
       - name: Publish (dry run)
         env:
           APP: ${{ inputs.app }}
@@ -157,10 +179,3 @@ jobs:
             echo "Nothing was uploaded. Replace this step with your store upload."
           } >> "$GITHUB_STEP_SUMMARY"
           cat "dist/$APP.artifact.txt"
-
-      - name: Keep the built artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: "${{ inputs.app }}-${{ inputs.track }}-${{ github.sha }}"
-          path: dist/
-          retention-days: 14

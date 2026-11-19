@@ -250,15 +250,22 @@ jobs:
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           RESULT: ${{ needs.publish.result }}
+          UPLOAD_REACHED: ${{ needs.publish.outputs.upload_reached }}
           APPROVER: ${{ github.event.review.user.login }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           if [[ "$RESULT" == "success" ]]; then
             gh pr comment "$PR_NUMBER" --repo "$REPO" --body "Approved by @$APPROVER. Publish completed."
             gh pr close "$PR_NUMBER" --repo "$REPO" --delete-branch
+          elif [[ "$UPLOAD_REACHED" == "true" ]]; then
+            # The upload had started, so the store may already have the release. A
+            # re-run could release again: close the request so the guard refuses it.
+            gh pr comment "$PR_NUMBER" --repo "$REPO" --body "Approved by @$APPROVER, but the publish failed after the store upload began (result: \`$RESULT\`). The store may or may not have the release. Check the store first. This request is closed so it cannot be re-run. If a release is still needed, start a new release request. Run: $RUN_URL"
+            gh pr close "$PR_NUMBER" --repo "$REPO" --delete-branch
+            echo "::error::Publish failed after the upload began. Request #$PR_NUMBER closed. Check the store before releasing again."
           else
             # The approval was valid and the failure is usually infrastructure: keep the
             # request open so a re-run can retry the same approval (SPEC.md).
-            gh pr comment "$PR_NUMBER" --repo "$REPO" --body "Approved by @$APPROVER, but the publish did not succeed (result: \`$RESULT\`). Nothing was published. If this request is still open and unchanged, fix the cause and re-run the failed jobs here: $RUN_URL. If it was closed or changed, the publish guard refuses it for good: start a new release request."
+            gh pr comment "$PR_NUMBER" --repo "$REPO" --body "Approved by @$APPROVER, but the publish did not succeed (result: \`$RESULT\`). The upload had not started, so nothing reached the store. If this request is still open and unchanged, fix the cause and re-run the failed jobs here: $RUN_URL. If it was closed or changed, the publish guard refuses it for good: start a new release request."
             echo "::notice::Publish result was $RESULT. Request #$PR_NUMBER left open for retry."
           fi

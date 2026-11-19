@@ -44,7 +44,7 @@ Runs when a review is submitted on any pull request. It continues only when **al
 12. `app` and `track` are on the fixed lists, read from the default branch.
 13. The review carries a commit id, and it is the PR's exact head commit (`github.event.review.commit_id == HEAD_SHA`). A missing id fails. This prevents approvals submitted against older commits from releasing unreviewed changes.
 14. The approval records the PR's head SHA.
-15. The publish job re-verifies, right before it publishes, that the PR's head SHA has not changed since approval ("dismiss stale approvals"), that the request is still open, and that its event log still shows no force-push, restore or reopen. This also covers a rerun of failed jobs, which skips the approval check.
+15. The publish job re-verifies, right before it publishes, that the PR's head SHA has not changed since approval ("dismiss stale approvals"), that the request is still open, and that its event log still shows no force-push, restore, reopen or close. This also covers a rerun of failed jobs, which skips the approval check.
 16. The approver is not the person who started the request run (the requester).
 
 Rules for failure:
@@ -61,14 +61,18 @@ When every check passes, Approve calls Publish with the app, the track, the requ
 After Publish finishes:
 
 - **Success:** comment, close the request pull request, delete its branch.
-- **Failure:** comment, and leave the pull request open with its branch. The approval was valid, so re-running the failed run (same approval, same commit) is allowed and needs no new approval. This holds only while the request is still open and unchanged. If it was closed or changed, the publish guard refuses it for good and a new request is needed. The comment says which case applies.
+- **Failure before the store upload began** (a full disk, a build error, a refused guard): comment, and leave the pull request open with its branch. The approval was valid and nothing reached the store, so re-running the failed run (same approval, same commit) is allowed and needs no new approval. This holds only while the request is still open and unchanged. If it was closed or changed, the publish guard refuses it for good and a new request is needed.
+- **Failure at or after the store upload:** comment, close the request pull request and delete its branch. The store may already have the release, and a re-run could release again (for example by building a higher version code). The comment says to check the store first and to start a new request only if a release is still needed.
+
+How Publish tells the two apart: just before the store upload it sets an output, `upload_reached`, and the Approve workflow reads it after the run. The store upload is the last step, so nothing can fail after it and leave an open request.
 
 ### 3. Publish (`_publish.yml`)
 
 1. Its only trigger is `workflow_call`. It cannot be started by a push, a pull request or the manual-run button.
 2. It is the only workflow that may use store or signing credentials.
 3. Before it builds, and again right before it publishes, it checks that the request is unchanged, open and clean (see Approve rule 15). The second check covers a request closed while the build runs.
-4. In this template it is a dry run: it builds the sample artifact and prints what it would upload. Template users replace that step with their real store upload.
+4. The store upload is the last step, and just before it Publish sets `upload_reached` (see "After Publish finishes"). Nothing may run after the upload: a failure there is treated as a failed upload, and the request is closed.
+5. In this template it is a dry run: it builds the sample artifact and prints what it would upload. Template users replace that step with their real store upload, and must keep it last.
 
 ## Supporting rules
 
