@@ -1,0 +1,71 @@
+name: "Release 4: Expire stale requests"
+
+# Closes release requests that nobody approved or refused, so they do not pile
+# up and stay approvable (SPEC.md, supporting rules). Runs daily. A manual run
+# defaults to a dry run that only lists what it would close.
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      max_age_days:
+        description: "Close open requests older than this many days"
+        required: true
+        default: "7"
+        type: string
+      dry_run:
+        description: "List what would be closed, without closing anything"
+        required: true
+        default: true
+        type: boolean
+
+concurrency:
+  group: release-request-expiry
+  cancel-in-progress: false
+
+permissions:
+  pull-requests: write
+  contents: write # delete the request branches
+
+jobs:
+  expire:
+    name: Close requests older than the limit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Find and close stale requests
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          MAX_AGE_DAYS: ${{ inputs.max_age_days || '7' }}
+          # A scheduled run always closes. A manual run follows its dry_run input.
+          DRY_RUN: ${{ github.event_name == 'schedule' && 'false' || inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          [[ "$MAX_AGE_DAYS" =~ ^[0-9]+$ ]] || { echo "::error::max_age_days must be a whole number."; exit 1; }
+
+          # Only open pull requests that the automation opened from a request branch.
+          open_prs="$(gh pr list --repo "$REPO" --state open --limit 200 --json number,headRefName,createdAt,author)" \
+            || { echo "::error::The open pull requests could not be read."; exit 1; }
+          stale="$(jq -r --argjson days "$MAX_AGE_DAYS" '
+            .[]
+            | select(.author.is_bot == true)
+            | select(.headRefName | startswith("release-request/"))
+            | select((now - (.createdAt | fromdateiso8601)) > ($days * 86400))
+            | "\(.number)\t\(.headRefName)"' <<< "$open_prs")"
+
+          closed=0
+          while IFS=$'\t' read -r number ref; do
+            [[ -n "$number" ]] || continue
+            if [[ "$DRY_RUN" == "true" ]]; then
+              echo "Would close #$number ($ref)"
+            else
+              gh pr comment "$number" --repo "$REPO" --body "Closed: this release request was not approved within $MAX_AGE_DAYS days. Start a new release request if it is still needed." || true
+              gh pr close "$number" --repo "$REPO" --delete-branch || { echo "::warning::Could not close #$number."; continue; }
+              echo "Closed #$number ($ref)"
+            fi
+            closed=$((closed + 1))
+          done <<< "$stale"
+
+          verb="Closed"; [[ "$DRY_RUN" == "true" ]] && verb="Would close"
+          echo "$verb $closed request(s) older than $MAX_AGE_DAYS days." | tee -a "$GITHUB_STEP_SUMMARY"
