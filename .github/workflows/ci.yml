@@ -51,3 +51,8 @@ jobs:
       # syntax error in any run step, before a broken workflow can be merged.
       - name: Check the workflow files
         run: ruby scripts/check-workflows.rb
+
+      # Tests for the optional add-ons. They run the real scripts against
+      # fakes in temporary folders and need no credentials.
+      - name: Test the add-ons
+        run: scripts/test-addons.sh

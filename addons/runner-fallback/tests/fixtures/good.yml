@@ -1,0 +1,11 @@
+name: good
+on: workflow_dispatch
+jobs:
+  build:
+    runs-on: ${{ vars.RUNNER_OS || 'ubuntu-latest' }}
+    steps:
+      - run: echo hi
+  second:
+    runs-on: ${{ vars.RUNNER_OS || 'ubuntu-latest' }}
+    steps:
+      - run: echo hi
