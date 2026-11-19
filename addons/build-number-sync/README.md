@@ -22,11 +22,12 @@ Reports a released build/version payload to one or more configured backend endpo
 ## Wire it in
 
 1. Copy `files/scripts/publish-build-number.mjs` to `scripts/publish-build-number.mjs` in your repository.
-2. In `.github/workflows/_publish.yml`, add an opt-in step after the publish/upload succeeds:
+2. In `.github/workflows/_publish.yml`, add an opt-in step after the publish/upload succeeds. It **must be non-fatal**, which is why the snippet sets `continue-on-error: true`:
 
    ```yaml
          - name: Sync build number
            if: ${{ success() && vars.BUILD_NUMBER_SYNC_URLS != '' }}
+           continue-on-error: true
            env:
              BUILD_NUMBER_SYNC_URLS: ${{ vars.BUILD_NUMBER_SYNC_URLS }}
              BUILD_NUMBER_SYNC_PAYLOAD: ${{ toJson(fromJson(format('{{"app":"{0}","track":"{1}","build":{2}}}', inputs.app, inputs.track, steps.version.outputs.version_code))) }}
@@ -35,7 +36,13 @@ Reports a released build/version payload to one or more configured backend endpo
            run: node scripts/publish-build-number.mjs
    ```
 
-   Adjust the payload to match your backend contract. Keep `_publish.yml` as `workflow_call` only and keep all credentials in the publish workflow/environment. Consider a hard failure (default) if a stale backend version would be harmful.
+   Adjust the payload to match your backend contract. Keep `_publish.yml` as `workflow_call` only and keep all credentials in the publish workflow/environment.
+
+### Why the step must not be able to fail the job
+
+This step runs **after** the store upload. If it could fail the publish job, a backend outage would mark the publish as failed when the release is already out. The approval gate would then close the request and ask for a manual check of the store (see "After Publish finishes" in [SPEC.md](../../SPEC.md)), and the build number would still be unsynced. With `continue-on-error: true`, a failed sync shows as a warning and the release stands.
+
+If the sync matters, re-run it by hand with the same variables (`node scripts/publish-build-number.mjs`). Do not make it a separate job in the same workflow: the approval gate judges the whole publish workflow, so a failing second job would still close the request.
 
 ## Safe by default
 
