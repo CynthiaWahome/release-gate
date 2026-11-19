@@ -42,8 +42,11 @@ end
 
 # True only when every runner label is a GitHub-hosted Linux or macOS image.
 def unix_hosted?(runs_on)
+  # A runner group picks the machine independently of its labels, so a group
+  # means the operating system is not known from the labels alone.
+  return false if runs_on.is_a?(Hash) && runs_on["group"]
   labels = runs_on.is_a?(Hash) ? Array(runs_on["labels"]) : Array(runs_on)
-  !labels.empty? && labels.all? { |l| l.to_s =~ /\A(ubuntu|macos)-(latest|\d[\w.-]*)\z/i }
+  !labels.empty? && labels.all? { |l| l.to_s =~ /\A(ubuntu|macos)-(latest|\d[\w.-]*|slim)\z/i }
 end
 
 # "bash" or "sh" if the step uses exactly that shell, else nil. Custom templates
