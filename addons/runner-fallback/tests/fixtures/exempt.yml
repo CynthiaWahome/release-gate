@@ -1,0 +1,12 @@
+name: exempt
+on: workflow_dispatch
+jobs:
+  same-line:
+    runs-on: my-persistent-box # runner-fallback: exempt (cleans one machine)
+    steps:
+      - run: echo hi
+  line-above:
+    # runner-fallback: exempt (must run on the persistent machine)
+    runs-on: my-persistent-box
+    steps:
+      - run: echo hi
