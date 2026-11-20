@@ -8,7 +8,7 @@ Frees disk space on a GitHub-hosted runner before a heavy native build, then fai
 
 Two small scripts:
 
-- **`reclaim-runner-disk.sh`** deletes preinstalled toolchains a mobile build never uses: .NET, GHC, PowerShell, Swift, CodeQL, Chromium, and the Android emulator and system images. In the project this came from, that freed roughly 30 GB on a hosted runner. That figure is from memory, not measured here, so check the before and after output on your own runner.
+- **`reclaim-runner-disk.sh`** deletes preinstalled toolchains a mobile build never uses: .NET, GHC, PowerShell, Swift, CodeQL, Chromium, and the Android emulator and system images. Measured on 2026-11-20 on a GitHub-hosted `ubuntu-latest` runner (image `ubuntu-26.04`, version `20261116.202.1`): free space went from 15 GiB to 32 GiB, so it freed about 17 GiB. The figure depends on the runner image, which GitHub changes, so check the before and after output on your own runner. The project this came from remembered a larger figure, but that was never measured.
 - **`check-free-disk.sh`** reads the free space and fails with a plain error if it is below a minimum you choose.
 
 It leaves the Android SDK platforms, build-tools, cmake and the NDK alone. Native modules compile C++ against the NDK, so removing it breaks the build in a way that looks unrelated.
